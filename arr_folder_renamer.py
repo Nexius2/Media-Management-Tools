@@ -1,5 +1,16 @@
 # -*- coding: utf-8 -*-
 
+"""
+#########################################################
+# Media Management Tools (MMT) - Arr folder renamer
+# Auteur       : Nexius2
+# Version      : 0.2
+# Description  : Script permettant de modifier le path pour correspondre aux besoin de plex via Sonarr et Radarren fonction des critères
+#                définis dans `config.json`.
+# Licence      : MIT
+#########################################################
+"""
+
 import json
 import logging
 from logging.handlers import RotatingFileHandler
@@ -58,13 +69,15 @@ file_handler.setFormatter(log_formatter)
 console_handler = logging.StreamHandler()
 console_handler.setFormatter(log_formatter)
 
-logger = logging.getLogger()
-logger.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
-logger.handlers = []  # Supprime tous les handlers existants pour éviter les doublons
-logger.addHandler(file_handler)
-logger.addHandler(console_handler)
+main_logger = logging.getLogger()
+main_logger.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
+main_logger.handlers = []  # Supprime tous les handlers existants pour éviter les doublons
+main_logger.addHandler(file_handler)
+main_logger.addHandler(console_handler)
 
 logging.info("📝 Système de logs avec rotation activé.")
+
+
 
 def update_sonarr_path(original_path, imdb_id, tvdb_id):
     # Si aucun ID n'est disponible, ne pas modifier le path
@@ -142,63 +155,64 @@ def refresh_movies(radarr_url, api_key, movie_id):
     else:
         logging.error(f"❌ Échec du Refresh pour le film ID {movie_id}. Code: {response.status_code}, Réponse: {response.text}")
 
-def verify_sonarr_file_movement(sonarr_url, api_key):
+def verify_sonarr_file_movement(sonarr_url, api_key, series_id, new_path):
     headers = {"X-Api-Key": api_key}
-    retry_intervals = [30, 300, 600, 1200]  # 30 secondes, 5, 10, 20 minutes
+    retry_intervals = [30,30, 60, 120, 300]  # 30 sec, 1 min, 2 min, 5 min
 
     for wait_time in retry_intervals:
-        logging.info(f"🔍 Vérification du déplacement des fichiers Sonarr... (Attente {wait_time} secondes)")
-        response = requests.get(f"{sonarr_url}/api/v3/system/task", headers=headers)
-
+        logging.info(f"🔍 Vérification du déplacement des fichiers Sonarr pour la série {series_id}... (Attente {wait_time} secondes)")
+        
+        # Récupérer les détails de la série depuis l'API
+        response = requests.get(f"{sonarr_url}/api/v3/series/{series_id}", headers=headers)
+        
         if response.status_code != 200:
-            logging.error(f"❌ Échec de récupération des tâches Sonarr : {response.status_code}")
+            logging.error(f"❌ Échec de récupération des infos de la série {series_id} : {response.status_code}")
             return False
 
-        tasks = response.json()
-        move_task = next((t for t in tasks if t['name'] == "Refresh Monitored Series"), None)
+        series_data = response.json()
+        current_path = series_data.get("path", "")
 
-        if move_task:
-            if move_task['state'] == "completed":
-                logging.info("✅ Déplacement des fichiers Sonarr terminé.")
-                return True
-            elif move_task['state'] == "queued" or move_task['state'] == "running":
-                logging.info("⏳ Le déplacement des fichiers est encore en cours. Nouvelle vérification après attente.")
-            else:
-                logging.error(f"Tâche dans un état inattendu : {move_task['state']}")
-        time.sleep(wait_time)
+        if current_path == new_path:
+            logging.info(f"✅ Déplacement détecté pour la série {series_id}. Nouveau chemin: {current_path}")
+            return True
+        else:
+            logging.info(f"⏳ Toujours aucun déplacement détecté, chemin actuel : {current_path}. Nouvelle tentative après {wait_time} secondes.")
+            time.sleep(wait_time)
 
-    logging.error("❌ Les fichiers Sonarr ne se sont pas déplacés après plusieurs tentatives.")
+    logging.error(f"❌ Aucun déplacement détecté pour la série {series_id} après plusieurs tentatives.")
     return False
 
 
-def verify_radarr_file_movement(radarr_url, api_key):
-    """ Vérifie si le déplacement des fichiers dans Radarr est terminé """
+
+
+
+def verify_radarr_file_movement(radarr_url, api_key, movie_id, new_path):
     headers = {"X-Api-Key": api_key}
-    retry_intervals = [30, 300, 600, 1200]  # 30 secondes, 5, 10, 20 minutes
+    retry_intervals = [30,30, 60, 120, 300]  # 30 sec, 1 min, 2 min, 5 min
 
     for wait_time in retry_intervals:
-        logging.info(f"🔍 Vérification du déplacement des fichiers Radarr... (Attente {wait_time} secondes)")
-        response = requests.get(f"{radarr_url}/api/v3/system/task", headers=headers)
-
+        logging.info(f"🔍 Vérification du déplacement des fichiers Radarr pour le film {movie_id}... (Attente {wait_time} secondes)")
+        
+        # Récupérer les détails du film depuis l'API
+        response = requests.get(f"{radarr_url}/api/v3/movie/{movie_id}", headers=headers)
+        
         if response.status_code != 200:
-            logging.error(f"❌ Échec de récupération des tâches Radarr : {response.status_code}")
+            logging.error(f"❌ Échec de récupération des infos du film {movie_id} : {response.status_code}")
             return False
 
-        tasks = response.json()
-        move_task = next((t for t in tasks if t['name'] == "Refresh Monitored Series"), None)
+        movie_data = response.json()
+        current_path = movie_data.get("path", "")
 
-        if move_task:
-            if move_task['state'] == "completed":
-                logging.info("✅ Déplacement des fichiers Sonarr terminé.")
-                return True
-            elif move_task['state'] == "queued" or move_task['state'] == "running":
-                logging.info("⏳ Le déplacement des fichiers est encore en cours. Nouvelle vérification après attente.")
-            else:
-                logging.error(f"Tâche dans un état inattendu : {move_task['state']}")
-        time.sleep(wait_time)
+        if current_path == new_path:
+            logging.info(f"✅ Déplacement détecté pour le film {movie_id}. Nouveau chemin: {current_path}")
+            return True
+        else:
+            logging.info(f"⏳ Toujours aucun déplacement détecté, chemin actuel : {current_path}. Nouvelle tentative après {wait_time} secondes.")
+            time.sleep(wait_time)
 
-    logging.error("❌ Les fichiers Radarr ne se sont pas déplacés après plusieurs tentatives.")
+    logging.error(f"❌ Aucun déplacement détecté pour le film {movie_id} après plusieurs tentatives.")
     return False
+
 
 # Fonction pour traiter les series avec Sonarr
 def process_sonarr(sonarr_url, api_key, main_logger, dry_run, work_limit):
@@ -248,9 +262,10 @@ def process_sonarr(sonarr_url, api_key, main_logger, dry_run, work_limit):
                         "imdbId": imdb_id,
                         "qualityProfileId": series.get("qualityProfileId"),
                         "seasonFolderEnabled": series.get("seasonFolderEnabled", True),
-                        "metadataProfileId": series.get("metadataProfileId")
-                        #"moveFiles": True  # Ajout de ce paramètre pour déplace les fichiers
+                        "metadataProfileId": series.get("metadataProfileId"),
+                        "monitored": series.get("monitored", True)  # ✅ Ajout de monitored pour éviter l'unmonitor automatique
                     }
+
                     
                     # Envoi de la requête
                     try:
@@ -264,7 +279,10 @@ def process_sonarr(sonarr_url, api_key, main_logger, dry_run, work_limit):
                             main_logger.info(f"Série {title} ({series_id}) : Chemin mis à jour avec succès.")
                         elif response_update.status_code == 202:
                             main_logger.info(f"Série {title} ({series_id}) : Le déplacement sera traité lors du prochain contrôle de tâches Sonarr.")
-                            verify_sonarr_file_movement(SONARR_URL, SONARR_API_KEY)
+                            verify_sonarr_file_movement(SONARR_URL, SONARR_API_KEY, series_id, new_path)
+                            refresh_series(SONARR_URL, SONARR_API_KEY, series_id)
+                            logging.info(f"♻️ Refresh forcé pour la série {title} ({series_id}).")
+
                         else:
                             # Log plus de détails pour le debug
                             error_details = {
@@ -344,10 +362,11 @@ def process_radarr(radarr_url, api_key, main_logger, dry_run, work_limit):
                         "tmdbId": tmdb_id,
                         "imdbId": imdb_id,
                         "path": new_path,
-                        "monitored": movie.get("monitored", True),
+                        "monitored": movie.get("monitored", True),  # ✅ Ajout de monitored pour éviter l'unmonitor automatique
                         "qualityProfileId": movie.get("qualityProfileId"),
                         "metadataProfileId": movie.get("metadataProfileId")
                     }
+
                     
                     response_update = requests.put(
                         f"{radarr_url}/api/v3/movie/{movie_id}?moveFiles=true",
@@ -359,6 +378,9 @@ def process_radarr(radarr_url, api_key, main_logger, dry_run, work_limit):
                         main_logger.info(f"Film {title} ({movie_id}) : Chemin mis à jour avec succès.")
                     elif response_update.status_code == 202:
                         main_logger.info(f"Film {title} ({movie_id}) : Le déplacement sera traité lors du prochain contrôle de tâches Radarr.")
+                        verify_radarr_file_movement(RADARR_URL, RADARR_API_KEY, movie_id, new_path)
+                        refresh_movies(RADARR_URL, RADARR_API_KEY, movie_id)
+                        logging.info(f"♻️ Refresh forcé pour le film {title} ({movie_id}).")
                     else:
                         main_logger.error(
                             f"Film {title} ({movie_id}) : Échec de la mise à jour du chemin. Code d'erreur: {response_update.status_code}"
@@ -400,28 +422,182 @@ def setup_logging():
     console_handler.setFormatter(log_formatter)
 
     # Configuration du logger principal
-    logger = logging.getLogger("arr_folder_renamer")
-    logger.setLevel(log_level)
-    logger.handlers = []  # Supprime tous les handlers existants pour éviter les doublons
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
+    main_logger = logging.getLogger("arr_folder_renamer")
+    main_logger.setLevel(log_level)
+    main_logger.handlers = []  # Supprime tous les handlers existants pour éviter les doublons
+    main_logger.addHandler(file_handler)
+    main_logger.addHandler(console_handler)
 
-    logger.info("✅ Système de logs correctement configuré.")
+    main_logger.info("✅ Système de logs correctement configuré.")
     
-    return logger  # 🔹 Retourne l'objet logger
+    return main_logger  # 🔹 Retourne l'objet logger
 
 
-
-
-def plex_refresh(plex_url, plex_api_key):
+def plex_refresh(plex_url, plex_api_key, main_logger):
     """ Rafraîchit les bibliothèques Plex """
     headers = {"X-Plex-Token": plex_api_key}
     response = requests.get(f"{plex_url}/library/sections/all/refresh", headers=headers)
     if response.status_code == 200:
-        logging.info("✅ Actualisation de la bibliothèque Plex réussie.")
+        main_logger.info("✅ Actualisation de la bibliothèque Plex réussie.")
     else:
-        logging.error("❌ Échec de l'actualisation de la bibliothèque Plex.")
+        main_logger.error("❌ Échec de l'actualisation de la bibliothèque Plex.")
   
+
+def get_sonarr_queue(sonarr_url, sonarr_api_key, main_logger):
+    try:
+        response = requests.get(f"{sonarr_url}/api/v3/queue", headers={"X-Api-Key": sonarr_api_key})
+        response.raise_for_status()
+        queue_data = response.json()
+        if isinstance(queue_data, dict) and "records" in queue_data:
+            return queue_data["records"]
+        else:
+            main_logger.warning(f"⚠️ Réponse inattendue de Sonarr: {queue_data}")
+            return []
+    except requests.RequestException as e:
+        main_logger.error(f"❌ Erreur lors de la récupération de la queue Sonarr: {e}")
+        return []
+
+def get_radarr_queue(radarr_url, radarr_api_key, main_logger):
+    try:
+        response = requests.get(f"{radarr_url}/api/v3/queue", headers={"X-Api-Key": radarr_api_key})
+        response.raise_for_status()
+        queue_data = response.json()
+        if isinstance(queue_data, dict) and "records" in queue_data:
+            return queue_data["records"]
+        else:
+            main_logger.warning(f"⚠️ Réponse inattendue de Radarr: {queue_data}")
+            return []
+    except requests.RequestException as e:
+        main_logger.error(f"❌ Erreur lors de la récupération de la queue Radarr: {e}")
+        return []
+
+
+def get_queue(api_url, api_key, service_name):
+    """Récupère la file d'attente de Sonarr ou Radarr."""
+    headers = {"X-Api-Key": api_key}
+    try:
+        response = requests.get(f"{api_url}/api/v3/queue", headers=headers, timeout=10)
+        response.raise_for_status()
+        queue_data = response.json()
+        if isinstance(queue_data, dict) and "records" in queue_data:
+            return queue_data["records"]
+        else:
+            main_logger.warning(f"⚠️ Réponse inattendue de {service_name}: {queue_data}")
+            return []
+    except requests.RequestException as e:
+        main_logger.error(f"❌ Erreur lors de la récupération de la queue {service_name}: {e}")
+        return []
+
+
+
+def wait_for_completion(sonarr_url, sonarr_api_key, radarr_url, radarr_api_key, max_retries=20, wait_time=60):
+    """Attend la fin des traitements Sonarr et Radarr avant de passer à Plex."""
+
+    last_non_empty_attempt = 0  # Stocke le dernier moment où il y avait des tâches
+    for attempt in range(max_retries):
+        sonarr_queue = get_queue(sonarr_url, sonarr_api_key, "Sonarr")
+        radarr_queue = get_queue(radarr_url, radarr_api_key, "Radarr")
+
+        active_sonarr_tasks = [task for task in sonarr_queue if task.get("status") not in ["completed", "warning"]]
+        active_radarr_tasks = [task for task in radarr_queue if task.get("status") not in ["completed", "warning"]]
+
+        logging.info(f"📜 Queue active Sonarr ({len(active_sonarr_tasks)} tâches en cours): {[task.get('status') for task in active_sonarr_tasks]}")
+        logging.info(f"📜 Queue active Radarr ({len(active_radarr_tasks)} tâches en cours): {[task.get('status') for task in active_radarr_tasks]}")
+
+        if not active_sonarr_tasks and not active_radarr_tasks:
+            # Vérification supplémentaire pour éviter les faux positifs
+            if attempt - last_non_empty_attempt >= 3:  # Attendre 3 itérations vides avant de confirmer la fin
+                logging.info("✅ Toutes les tâches Sonarr et Radarr sont terminées. Fin de l'attente.")
+                return True
+            else:
+                logging.info("🔄 La queue est vide, mais on attend encore quelques itérations pour confirmation...")
+        else:
+            last_non_empty_attempt = attempt  # Réinitialisation car il reste des tâches
+
+        logging.info(f"⏳ Attente {wait_time} secondes avant nouvelle vérification... (Tentative {attempt+1}/{max_retries})")
+        time.sleep(wait_time)
+
+    logging.error("❌ Sonarr et Radarr n'ont pas terminé leurs tâches à temps.")
+    return False
+
+
+
+def wait_for_sonarr_radarr_completion(sonarr_url, sonarr_api_key, radarr_url, radarr_api_key, main_logger, max_retries=10, wait_time=30):
+    """Attendre que Sonarr et Radarr aient terminé leurs tâches."""
+    import requests
+
+    def get_queue(api_url, api_key):
+        try:
+            headers = {"X-Api-Key": api_key}
+            response = requests.get(f"{api_url}/api/v3/queue", headers=headers, timeout=10)
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as e:
+            main_logger.warning(f"⚠️ Erreur lors de la récupération de la queue {api_url}: {e}")
+            return []
+
+    for attempt in range(max_retries):
+        sonarr_queue = get_queue(sonarr_url, sonarr_api_key)
+        radarr_queue = get_queue(radarr_url, radarr_api_key)
+
+        active_sonarr_tasks = [task for task in sonarr_queue if task.get("status") not in ["completed", "warning"]]
+        active_radarr_tasks = [task for task in radarr_queue if task.get("status") not in ["completed", "warning"]]
+
+        main_logger.info(f"📜 Queue active Sonarr ({len(active_sonarr_tasks)} tâches en cours): {[task.get('status') for task in active_sonarr_tasks]}")
+        main_logger.info(f"📜 Queue active Radarr ({len(active_radarr_tasks)} tâches en cours): {[task.get('status') for task in active_radarr_tasks]}")
+
+        if not active_sonarr_tasks and not active_radarr_tasks:
+            main_logger.info("✅ Toutes les tâches Sonarr et Radarr sont terminées.")
+            return True
+
+        main_logger.info(f"⏳ Attente {wait_time} secondes avant nouvelle vérification... (Tentative {attempt+1}/{max_retries})")
+        time.sleep(wait_time)
+
+    main_logger.error("❌ Sonarr et Radarr n'ont pas terminé leurs tâches à temps.")
+    return False(sonarr_url, sonarr_api_key, radarr_url, radarr_api_key, main_logger)
+    """
+    Attend la fin des traitements de Sonarr et Radarr avant de passer à Plex.
+    """
+    while True:
+        active_tasks = 0
+
+        # Vérification de Sonarr
+        try:
+            response_sonarr = requests.get(f"{sonarr_url}/api/v3/queue", headers={"X-Api-Key": sonarr_api_key})
+            response_sonarr.raise_for_status()
+            sonarr_queue = response_sonarr.json()
+            active_sonarr = [task for task in sonarr_queue if task.get("status") not in ["completed", "failed"]]
+            active_tasks += len(active_sonarr)
+        except Exception as e:
+            main_logger.warning(f"⚠️ Erreur lors de la récupération de la queue Sonarr : {e}")
+            active_sonarr = []
+
+        # Vérification de Radarr
+        try:
+            response_radarr = requests.get(f"{radarr_url}/api/v3/queue", headers={"X-Api-Key": radarr_api_key})
+            response_radarr.raise_for_status()
+            radarr_queue = response_radarr.json()
+            active_radarr = [task for task in radarr_queue if task.get("status") not in ["completed", "failed"]]
+            active_tasks += len(active_radarr)
+        except Exception as e:
+            main_logger.warning(f"⚠️ Erreur lors de la récupération de la queue Radarr : {e}")
+            active_radarr = []
+
+        main_logger.info(f"🔄 Tâches en cours - Sonarr : {len(active_sonarr)}, Radarr : {len(active_radarr)}.")
+
+        if active_tasks == 0:
+            main_logger.info("✅ Toutes les tâches Sonarr et Radarr sont terminées. Passage à Plex.")
+            break  # Sortir de la boucle quand il n'y a plus de tâches actives
+
+        main_logger.info(f"🕒 Vérification à nouveau dans 30 secondes...")
+        time.sleep(30)  # Attente avant la prochaine vérification
+
+
+
+
+
+
+
 
 # Fonction principale
 def main(dry_run):
@@ -446,8 +622,15 @@ def main(dry_run):
         
     # Traitement du rafraichissement Plex    
     if not dry_run:
-        #plex_refresh(PLEX_URL, PLEX_API_KEY)
-        main_logger.info("♻️ Rafraîchissement de Plex...")
+        # Attendre la fin des traitements Sonarr et Radarr
+        if wait_for_completion(SONARR_URL, SONARR_API_KEY, RADARR_URL, RADARR_API_KEY, max_retries=10, wait_time=30):
+            logging.info("♻️ Rafraîchissement de Plex...")
+            plex_refresh(PLEX_URL, PLEX_API_KEY)
+            logging.info("✅ Plex a été actualisé avec succès.")
+        else:
+            logging.error("❌ Impossible de rafraîchir Plex car Sonarr/Radarr n'ont pas terminé à temps.")
+
+
         
     main_logger.info("✅ Fin du script.")
 
