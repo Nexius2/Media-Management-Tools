@@ -1,12 +1,10 @@
 # -*- coding: utf-8 -*-
-
-# -*- coding: utf-8 -*-
 """
 #########################################################
 # Media Management Tools (MMT) - Radarr Unmonitor
 # Auteur       : Nexius2
 # Date         : 2025-02-18
-# Version      : 1.0
+# Version      : 1.1
 # Description  : Script permettant de désactiver le monitoring
 #                des films dans Radarr en fonction des critères
 #                définis dans `config.json`.
@@ -46,6 +44,7 @@ import json
 import logging
 from logging.handlers import RotatingFileHandler
 import time
+import re
 
 
 # Charger la configuration
@@ -137,26 +136,52 @@ def get_movies():
 
 
 
-
 def should_unmonitor(movie):
     """ Vérifie si un film doit être désactivé en fonction du nom du fichier """
     title = movie.get("title", "Titre inconnu")
     year = movie.get("year", "Année inconnue")
     movie_id = movie.get("id")
-    
-    # On est sûr que movieFile et relativePath existent
+
+    # Nom du fichier en minuscule
     relative_path = movie["movieFile"]["relativePath"].lower()
 
     logging.debug(f"🔍 Analyse du film : {title} ({year}, ID: {movie_id}) - Fichier détecté : {relative_path}")
+    #logging.debug(f"🚫 {title} ({year}) n'a pas été désactivé car aucun des groupes suivants ne correspondait : {SEARCH_TERMS}")
 
-    # Vérification des termes dans tous les ensembles de critères
+
+    # Vérification des termes avec une expression régulière améliorée
+    def match_criteria(term):
+        """
+        Vérifie si un terme est présent dans le nom du fichier en tant que mot distinct.
+        - Autorise des variantes comme "1080p" en plus de "1080".
+        """
+        if term.isdigit():  # Si le terme est un nombre (ex: 1080, 4K)
+            pattern = rf"(?:^|[\[\]\+\-&\s\._]){re.escape(term)}(?:p|i|$|[\[\]\+\-&\s\._])"
+        else:
+            pattern = rf"(?:^|[\[\]\+\-&\s\._]){re.escape(term.lower())}(?:$|[\[\]\+\-&\s\._])"
+
+        match = re.search(pattern, relative_path)
+        if match:
+            logging.debug(f"✅ Terme '{term}' trouvé dans '{relative_path}'")
+        else:
+            logging.debug(f"❌ Terme '{term}' NON trouvé dans '{relative_path}'")
+        return bool(match)
+
+
+
+
+    # Vérifier si un groupe de critères correspond
     for search_group in SEARCH_TERMS:
-        if all(term.lower() in relative_path for term in search_group):
+        if all(match_criteria(term) for term in search_group):
             logging.info(f"🎯 Film détecté : {title} ({year}, ID: {movie_id}) - Fichier: {relative_path} - Correspondance: {search_group}")
             return True
 
     logging.debug(f"🚫 Le film '{title}' ({year}, ID: {movie_id}) ne correspond à aucun critère de désactivation.")
     return False
+
+
+
+
 
 
 def unmonitor_movie(movie, dry_run_list):

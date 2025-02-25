@@ -1,51 +1,21 @@
 # -*- coding: utf-8 -*-
 
-# -*- coding: utf-8 -*-
 """
 #########################################################
 # Media Management Tools (MMT) - Sonarr Unmonitor
 # Auteur       : Nexius2
-# Date         : 2025-02-18
-# Version      : 1.0
+# Version      : 4.4
 # Description  : Script permettant de désactiver le monitoring
 #                des épisodes dans Sonarr en fonction des critères
 #                définis dans `config.json`.
 # Licence      : MIT
 #########################################################
-
-# 📌 Utilisation :
-# Exécuter le script via la ligne de commande :
-#   python sonarr_unmonitor.py
-#
-# Mode Simulation (Dry-Run) :
-#   - Défini dans `config.json`, le mode Dry-Run affiche les épisodes
-#     qui seraient désactivés sans les modifier réellement.
-#
-# Mode Exécution :
-#   - Modifier "dry_run": false dans `config.json` pour que le script
-#     applique réellement les modifications.
-
-# 🔹 Dépendances :
-# - Python 3.x
-# - Module `requests` (pip install requests)
-
-# 🔧 Configuration :
-# - Vérifiez que `config.json` est bien rempli avec l'URL et la clé API.
-# - Ajoutez ou modifiez les critères de désactivation selon vos besoins.
-
-# 📝 Journalisation :
-# - Les logs sont enregistrés dans sonarr_unmonitor.log
-# - Inclut les épisodes traités, les erreurs et les mises à jour effectuées.
-
-#########################################################
 """
-
 
 import requests
 import json
 import logging
 from logging.handlers import RotatingFileHandler
-import time
 import re
 
 # Charger la configuration
@@ -58,18 +28,14 @@ except FileNotFoundError:
     print(f"❌ Erreur : fichier de configuration '{CONFIG_FILE}' introuvable.")
     exit(1)
 
-# Extraire la configuration des services
 SONARR_CONFIG = config["services"].get("sonarr", {})
-
-# Extraire la configuration spécifique à Sonarr Unmonitor
 UNMONITOR_CONFIG = config.get("sonarr_unmonitor", {})
 
 LOG_FILE = UNMONITOR_CONFIG.get("log_file", "sonarr_unmonitor.log")
 LOG_LEVEL = UNMONITOR_CONFIG.get("log_level", "INFO").upper()
 DRY_RUN = UNMONITOR_CONFIG.get("dry_run", True)
-SEARCH_TERMS = UNMONITOR_CONFIG.get("search_terms", [["1080", "FR", "MULTI"], ["4K", "FR", "MULTI"]])
+SEARCH_TERMS = UNMONITOR_CONFIG.get("search_terms", ["1080", "FR", "MULTI"])
 
-# Vérifier la configuration Sonarr
 SONARR_URL = SONARR_CONFIG.get("url")
 SONARR_API_KEY = SONARR_CONFIG.get("api_key")
 
@@ -77,193 +43,161 @@ if not SONARR_URL or not SONARR_API_KEY:
     print("❌ Configuration Sonarr manquante ou incomplète dans 'config.json'.")
     exit(1)
 
-# Initialisation du logging avec rotation
+# Initialisation du logging
 log_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-
-file_handler = RotatingFileHandler(
-    LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8"
-)
+file_handler = RotatingFileHandler(LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=5, encoding="utf-8")
 file_handler.setFormatter(log_formatter)
-
 console_handler = logging.StreamHandler()
 console_handler.setFormatter(log_formatter)
-
 logger = logging.getLogger()
-logger.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
+logger.setLevel(getattr(logging, LOG_LEVEL, logging.DEBUG))
 logger.handlers = []
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
-logging.info("📝 Système de logs avec rotation activé.")
+logging.info("📝 Système de logs activé.")
 
 HEADERS = {"X-Api-Key": SONARR_API_KEY, "Content-Type": "application/json"}
 
-def get_episodes():
-    """ Récupère la liste des épisodes dans Sonarr avec leurs fichiers et filtre ceux qui sont monitorés """
-    series_url = f"{SONARR_URL}/api/v3/series"
-    response = requests.get(series_url, headers=HEADERS)
+def clean_filename(filename):
+    """ Nettoie et normalise le nom du fichier pour améliorer la correspondance """
+    filename = filename.lower()
+    filename = filename.replace("1080p", "1080").replace("2160p", "4k")
+    filename = re.sub(r"[\(\)\-_.]", " ", filename)  # Supprime tirets, underscores, points
+    filename = re.sub(r"\s+", " ", filename).strip()  # Supprime les espaces multiples
+    return filename
 
+def get_episodes(series_id):
+    """ Récupère les épisodes pour une série spécifique """
+    episodes_url = f"{SONARR_URL}/api/v3/episode?seriesId={series_id}&includeEpisodeFile=true"
+    response = requests.get(episodes_url, headers=HEADERS)
+    
     if response.status_code != 200:
-        logging.error(f"❌ Erreur lors de la récupération des séries : {response.status_code} - {response.text}")
+        logging.error(f"❌ Erreur lors de la récupération des épisodes pour la série {series_id}: {response.status_code}")
         return []
-
-    series_list = response.json()
-    all_episodes = []
-
-    for serie in series_list:
-        series_id = serie["id"]
-        episodes_url = f"{SONARR_URL}/api/v3/episode?seriesId={series_id}&includeEpisodeFile=true"
-        response = requests.get(episodes_url, headers=HEADERS)
-
-        if response.status_code == 200:
-            episodes = response.json()
-            logging.info(f"📥 {len(episodes)} épisodes récupérés pour la série {serie['title']} (ID: {series_id}).")
-
-            for ep in episodes:
-                ep["seriesTitle"] = serie["title"]  # Ajout du titre de la série à chaque épisode
-                episode_id = ep.get("id")
-                monitored = ep.get("monitored", False)  # Vérifier si l'épisode est monitoré
-                episode_file = ep.get("episodeFile", {})
-
-                # Si aucun fichier n'est trouvé, tenter une requête directe
-                if not episode_file:
-                    file_url = f"{SONARR_URL}/api/v3/episodeFile?episodeId={episode_id}"
-                    file_response = requests.get(file_url, headers=HEADERS)
-
-                    if file_response.status_code == 200:
-                        episode_files = file_response.json()
-                        if episode_files:
-                            episode_file = episode_files[0]  # Prendre le premier fichier associé
-
-                relative_path = episode_file.get("relativePath")
-
-                # ✅ Filtrage : Ne garder que les épisodes monitorés ET avec un fichier valide
-                if monitored and relative_path:
-                    relative_path = relative_path.lower()
-                    logging.debug(f"✅ Épisode monitoré avec fichier : {serie['title']} (ID: {series_id}) - {ep['title']} - {relative_path}")
-                    ep["episodeFile"] = episode_file
-                    all_episodes.append(ep)
-                else:
-                    logging.debug(f"🚫 Ignoré (Non monitoré ou pas de fichier) : {serie['title']} - {ep['title']} (ID: {episode_id})")
-
-        else:
-            logging.error(f"❌ Erreur lors de la récupération des épisodes pour la série {serie['title']} : {response.status_code} - {response.text}")
-
-    logging.info(f"✅ Total épisodes sélectionnés après filtrage : {len(all_episodes)}")
-    return all_episodes
-
-
-
-
-
-
+    
+    episodes = response.json()
+    logging.info(f"📌 {len(episodes)} épisodes récupérés pour la série {series_id}")
+    return episodes
 
 def should_unmonitor(episode):
-    """ Vérifie si un épisode doit être désactivé en fonction du nom du fichier """
-    series_title = episode.get("seriesTitle", "Série inconnue")
-    episode_title = episode.get("title", "Titre inconnu")
-    season_number = episode.get("seasonNumber", "Inconnu")
-    episode_number = episode.get("episodeNumber", "Inconnu")
-    episode_id = episode.get("id")
-    episode_file = episode.get("episodeFile", {})
-
-    # Vérification si un fichier est attaché
-    if not episode_file or "relativePath" not in episode_file:
-        logging.warning(f"🚫 AUCUN FICHIER trouvé pour : {series_title} (S{season_number}E{episode_number}, ID: {episode_id})")
+    """ Vérifie si un épisode doit être marqué en 'unmonitored' """
+    filename = episode.get("episodeFile", {}).get("relativePath", "")
+    if not filename:
+        logging.debug(f"🚫 Aucun fichier associé à l'épisode {episode['id']}")
         return False
 
-    # LOG POUR AFFICHER TOUS LES FICHIERS ANALYSÉS
-    relative_path = episode_file["relativePath"].lower()
-    logging.debug(f"📝 Analyse de l'épisode : {series_title} (S{season_number}E{episode_number}, ID: {episode_id}) - Fichier détecté : {relative_path}")
+    normalized_filename = clean_filename(filename)
+    logging.debug(f"🔍 Vérification des critères pour : {normalized_filename}")
 
-    # LOG POUR VOIR LES TERMES UTILISÉS
-    logging.debug(f"🔎 Critères de recherche utilisés : {SEARCH_TERMS}")
+    # Fonction de vérification des termes avec une regex améliorée
+    def match_criteria(term):
+        """
+        Vérifie si un terme est présent dans le nom du fichier en tant que mot distinct.
+        - Autorise des variantes comme "1080p" en plus de "1080".
+        """
+        if term.isdigit():  # Si le terme est un nombre (ex: 1080, 4K)
+            pattern = rf"(?:^|[\[\]\+\-&\s\._]){re.escape(term)}(?:p|i|$|[\[\]\+\-&\s\._])"
+        else:
+            pattern = rf"(?:^|[\[\]\+\-&\s\._]){re.escape(term.lower())}(?:$|[\[\]\+\-&\s\._])"
 
-    # Fonction de détection avancée avec expressions régulières
-    def match_terms(path, terms):
-        regex_patterns = {
-            "1080": r"(?<!\\d)1080p(?!\\d)| 1080 ",
-            "FR": r" fr |fr\\+|\\+fr",
-            "EN": r" en |en\\+|\\+en"
-        }
-        return all(re.search(regex_patterns.get(term, rf"\\b{re.escape(term)}\\b"), path) for term in terms)
+        match = re.search(pattern, normalized_filename)
+        if match:
+            logging.debug(f"✅ Terme '{term}' trouvé dans '{normalized_filename}'")
+        else:
+            logging.debug(f"❌ Terme '{term}' NON trouvé dans '{normalized_filename}'")
+        return bool(match)
 
-    # Vérification des termes dans tous les ensembles de critères
+    # Vérifier si un groupe de critères correspond
     for search_group in SEARCH_TERMS:
-        if match_terms(relative_path, search_group):
-            logging.info(f"🎯 Épisode détecté : {series_title} (S{season_number}E{episode_number}, ID: {episode_id}) - Fichier: {relative_path} - Correspondance: {search_group}")
+        if all(match_criteria(term) for term in search_group):
+            logging.info(f"🎯 Épisode détecté : {filename} - Correspondance: {search_group}")
             return True
 
-    logging.debug(f"❌ Aucun match trouvé pour '{relative_path}' avec les critères {SEARCH_TERMS}.")
+    logging.debug(f"🚫 Aucun critère trouvé pour {filename} (Comparé avec {SEARCH_TERMS})")
     return False
 
+def get_series():
+    """ Récupère la liste des séries suivies dans Sonarr """
+    series_url = f"{SONARR_URL}/api/v3/series"
+    response = requests.get(series_url, headers=HEADERS)
+    
+    if response.status_code != 200:
+        logging.error(f"❌ Erreur lors de la récupération des séries : {response.status_code}")
+        return []
+    
+    series_list = response.json()
+    logging.info(f"📥 {len(series_list)} séries récupérées depuis Sonarr.")
+    return series_list
+    
+def unmonitor_episode(episode):
+    """ Désactive le monitoring d'un épisode dans Sonarr """
+    episode_id = episode["id"]
+    title = episode.get("title", "Titre inconnu")
+    season = episode.get("seasonNumber", "?")
+    episode_number = episode.get("episodeNumber", "?")
 
+    logging.info(f"🛠️ Traitement de l'épisode '{title}' (S{season}E{episode_number}, ID: {episode_id})...")
 
+    if DRY_RUN:
+        logging.info(f"[DRY_RUN] 🚀 L'épisode '{title}' (S{season}E{episode_number}, ID: {episode_id}) aurait été marqué comme NON MONITORÉ ✅")
+        return
 
+    url = f"{SONARR_URL}/api/v3/episode/{episode_id}"
+    episode_data = {"monitored": False}
 
+    response = requests.put(url, headers=HEADERS, json=episode_data)
 
-
-
-
+    if response.status_code == 200:
+        logging.info(f"✅ Épisode '{title}' (S{season}E{episode_number}, ID: {episode_id}) marqué comme NON MONITORÉ avec succès.")
+    else:
+        logging.error(f"❌ Erreur lors de la mise à jour de l'épisode {episode_id}: {response.status_code} - {response.text}")
 
 
 def main():
-    logging.info("🚀 Début du traitement des épisodes dans Sonarr...")
+    """ Traite toutes les séries et leurs épisodes dans Sonarr """
+    logging.info("🚀 Début du traitement des séries dans Sonarr...")
 
-    # Charger la limite de travail depuis la configuration
-    WORK_LIMIT = UNMONITOR_CONFIG.get("work_limit", 0)
-
-    episodes = get_episodes()
-    if not episodes:
-        logging.warning("⚠️ Aucun épisode trouvé dans Sonarr.")
+    series_list = get_series()
+    if not series_list:
+        logging.warning("⚠️ Aucune série trouvée dans Sonarr.")
         return
 
-    total_processed = 0
-    dry_run_list = []  # Liste pour stocker les épisodes traités en mode DRY_RUN
+    total_processed = 0  # Compteur d'épisodes désactivés
+    dry_run_list = []  # Liste des épisodes qui auraient été désactivés
 
-    for episode in episodes:
-        title = episode.get("title", "Inconnu")
-        season_number = episode.get("seasonNumber", "Inconnu")
-        episode_number = episode.get("episodeNumber", "Inconnu")
-        episode_id = episode.get("id")
-        episode_file = episode.get("episodeFile", {})
+    for series in series_list:
+        series_id = series.get("id")
+        series_title = series.get("title", "Titre inconnu")
 
-        relative_path = episode_file.get("relativePath", "").lower()
-        monitored = episode.get("monitored", False)
+        logging.info(f"🔍 Analyse des épisodes pour la série '{series_title}' (ID: {series_id})...")
 
-        # 🔹 1️⃣ Filtrer les épisodes non monitorés
-        if not monitored and relative_path:
-            logging.warning(f"🚫 IGNORÉ (Non monitoré) : {series_title} (S{season_number}E{episode_number}, ID: {episode_id}) - {relative_path}")
-            continue  # On passe au suivant
+        episodes = get_episodes(series_id)
+        if not episodes:
+            logging.warning(f"⚠️ Aucun épisode trouvé pour la série '{series_title}' (ID: {series_id}).")
+            continue
 
-        # 🔹 2️⃣ Vérifier si l'épisode doit être unmonitoré
-        if should_unmonitor(episode):
-            if WORK_LIMIT and total_processed >= WORK_LIMIT:
-                logging.info(f"⏹️ Limite de {WORK_LIMIT} épisodes atteinte, arrêt immédiat du traitement.")
-                break  
-
-            logging.info(f"🎯 À UNMONITORER : {series_title} (S{season_number}E{episode_number}, ID: {episode_id}) - {relative_path}")
-
-            if DRY_RUN:
-                logging.info(f"🚨 [DRY_RUN] Cet épisode serait désactivé : {series_title} (S{season_number}E{episode_number})")
-                dry_run_list.append(f"{series_title} (S{season_number}E{episode_number})")
+        for episode in episodes:
+            has_file = "episodeFile" in episode and episode["episodeFile"] is not None
+            if has_file:
+                logging.debug(f"📄 Fichier détecté : {episode['episodeFile']['relativePath']}")
             else:
+                logging.debug(f"🚫 Aucun fichier trouvé pour l'épisode {episode['title']} (ID: {episode['id']})")
+                continue
+
+            if episode.get("monitored") and should_unmonitor(episode):
+                logging.info(f"📡 Envoi requête unmonitor pour l'épisode {episode['id']} ({episode['title']})...")
                 unmonitor_episode(episode)
+                total_processed += 1
+                dry_run_list.append(f"{series_title} - {episode['title']} (S{episode['seasonNumber']}E{episode['episodeNumber']})")
 
-            # ✅ Incrémenter immédiatement après traitement
-            total_processed += 1  
-
-    # Affichage du résumé final
     if DRY_RUN and dry_run_list:
-        logging.info(f"[DRY_RUN] 📋 Liste des épisodes qui auraient été désactivés ({len(dry_run_list)}):")
-        for episode in dry_run_list:
-            logging.info(f" {series_title} - {episode} - {SEARCH_TERMS}")
+        logging.info(f"[DRY_RUN] 📋 Épisodes qui auraient été désactivés ({len(dry_run_list)}):")
+        for ep in dry_run_list:
+            logging.info(f"  - {ep}")
 
-    logging.info(f"✅ Fin du traitement. {total_processed} épisodes ont été traités (mode réel ou simulation).")
+    logging.info(f"✅ Fin du traitement. {total_processed} épisodes ont été désactivés.")
 
-
-
-
-
+    
 if __name__ == "__main__":
     main()
