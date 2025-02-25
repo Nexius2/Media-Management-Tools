@@ -4,7 +4,7 @@
 #########################################################
 # Media Management Tools (MMT) - Arr folder renamer
 # Auteur       : Nexius2
-# Version      : 0.2
+# Version      : 0.21
 # Description  : Script permettant de modifier le path pour correspondre aux besoin de plex via Sonarr et Radarren fonction des critères
 #                définis dans `config.json`.
 # Licence      : MIT
@@ -501,8 +501,8 @@ def wait_for_completion(sonarr_url, sonarr_api_key, radarr_url, radarr_api_key, 
         active_sonarr_tasks = [task for task in sonarr_queue if task.get("status") not in ["completed", "warning"]]
         active_radarr_tasks = [task for task in radarr_queue if task.get("status") not in ["completed", "warning"]]
 
-        logging.info(f"📜 Queue active Sonarr ({len(active_sonarr_tasks)} tâches en cours): {[task.get('status') for task in active_sonarr_tasks]}")
-        logging.info(f"📜 Queue active Radarr ({len(active_radarr_tasks)} tâches en cours): {[task.get('status') for task in active_radarr_tasks]}")
+        logging.debug(f"📜 Queue active Sonarr ({len(active_sonarr_tasks)} tâches en cours): {[task.get('status') for task in active_sonarr_tasks]}")
+        logging.debug(f"📜 Queue active Radarr ({len(active_radarr_tasks)} tâches en cours): {[task.get('status') for task in active_radarr_tasks]}")
 
         if not active_sonarr_tasks and not active_radarr_tasks:
             # Vérification supplémentaire pour éviter les faux positifs

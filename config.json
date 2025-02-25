@@ -1,0 +1,62 @@
+{
+    "services": {
+        "radarr": {
+            "url": "http://192.168.1.80:7878",
+            "api_key": "xxxxxxxxxxxxxx"
+        },
+        "sonarr": {
+            "url": "http://192.168.1.80:8989",
+            "api_key": "xxxxxxxxxxxxxxxxxx"
+        },
+        "plex": {
+            "url": "http://192.168.1.80:32400",
+            "api_key": "xxxxxxxxxxxxxxxxxxxxxxxxxx"
+        }
+    },
+    "radarr_unmonitor": {
+        "log_file": "radarr_unmonitor.log",
+        "log_level": "INFO",
+        "dry_run": true,
+        "search_terms": [
+			["4K", "FR", "MULTI"],
+			["1080", "FR", "MULTI"],
+			["EN", "FR", "1080"],
+			["EN", "FR", "4K"]
+		]
+
+    },
+	"sonarr_unmonitor": {
+        "log_file": "sonarr_unmonitor.log",
+        "log_level": "debug",
+        "dry_run": false,
+		"work_limit": 0,
+        "search_terms": [
+			["4K", "FR", "MULTI"],
+			["1080", "FR", "MULTI"],
+			["EN", "FR", "1080p"],
+			["EN", "FR", "4K"]
+		]
+    },
+	"arr_folder_renamer": {
+        "log_file": "arr_folder_renamer.log",
+        "log_level": "debug",
+        "dry_run": false,
+        "run_sonarr": true,
+		"run_radarr": true,
+		"work_limit": 10
+    },
+	"QBCleaner": {
+		"qbittorrent_url": "http://192.168.1.70:8080",
+		"qbittorrent_username": "admin",
+		"qbittorrent_password": "Qbittorent2022!",
+		"min_free_space": 6,
+		"target_free_space": 8,
+		"dry_run": true
+	},
+	"RadarrCleaner": {
+		"log_file": "RadarrCleaner.log",
+        "log_level": "info",
+		"dry_run": false
+	}
+
+}
