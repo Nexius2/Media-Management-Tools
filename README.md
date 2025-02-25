@@ -1,145 +1,135 @@
-# 📌 Media Management Tools (MMT) - README
+# 📌 Media Management Tools - README
 
 ## 🚀 Description
-**Media Management Tools (MMT)** est un ensemble d'outils permettant d'automatiser la gestion des bibliothèques **Radarr** et **Sonarr**. Il inclut des scripts qui désactivent automatiquement le monitoring des films et des épisodes selon des critères prédéfinis.
+
+Ce projet contient plusieurs scripts permettant d'automatiser la gestion des médias dans Radarr, Sonarr, qBittorrent et Plex. Chaque script a un objectif spécifique et fonctionne avec une configuration centralisée dans `config.json`.
 
 ## 📂 Installation
+
 ### 1️⃣ Prérequis
+
 - **Python 3.x** installé
-- **Radarr et/ou Sonarr** configurés et fonctionnels
-- **API Keys Radarr et Sonarr** récupérées
-- **Fichier de configuration `config.json`** bien rempli
+- **Dépendances Python** installées
+- **Radarr, Sonarr, qBittorrent et Plex** configurés et fonctionnels
+- **API Keys** récupérées pour chaque service
+- \*\*Fichier de configuration \*\***`config.json`** bien rempli
 
 ### 2️⃣ Installation des dépendances
+
 ```bash
-pip install requests
-```
-
-## ⚙️ Configuration
-Le fichier `config.json` contient tous les paramètres nécessaires au bon fonctionnement des scripts.
-
-### Exemple de configuration :
-```json
-{
-  "services": {
-    "radarr": {
-      "url": "http://localhost:7878",
-      "api_key": "VOTRE_API_KEY"
-    },
-    "sonarr": {
-      "url": "http://localhost:8989",
-      "api_key": "VOTRE_API_KEY"
-    }
-  },
-  "radarr_unmonitor": {
-    "log_file": "radarr_unmonitor.log",
-    "log_level": "INFO",
-    "dry_run": true,
-    "search_terms": [
-      ["4K", "FR", "MULTI"],
-      ["1080", "FR", "MULTI"],
-      ["EN", "FR", "1080"],
-      ["EN", "FR", "4K"]
-    ]
-  },
-  "sonarr_unmonitor": {
-    "log_file": "sonarr_unmonitor.log",
-    "log_level": "INFO",
-    "dry_run": true,
-    "search_terms": [
-      ["4K", "FR", "MULTI"],
-      ["1080", "FR", "MULTI"]
-    ]
-  }
-}
+pip install requests qbittorrent-api arrapi
 ```
 
 ---
 
-# 🛠 Outils disponibles
+## 🔧 Scripts disponibles
 
-## 🎬 Radarr Unmonitor
+### 1️⃣ **Radarr Unmonitor** (`radarr_unmonitor.py`)
 
-### 🔹 Description
-Ce script automatise la gestion des films dans **Radarr** en désactivant le monitoring des films correspondant à des critères définis dans `config.json`.
+**Description** :
+Ce script désactive le monitoring des films dans **Radarr** en fonction de critères définis dans `config.json`. Il filtre les films ayant un fichier téléchargé et correspondant aux critères définis.
 
-### 🔧 Utilisation
+**Exécution** :
+
 ```bash
 python radarr_unmonitor.py
 ```
 
-### Mode Simulation (DRY_RUN)
-Si `dry_run` est activé dans `config.json`, le script affichera uniquement les films qui **auraient été désactivés**, sans modifier Radarr.
-
-### Mode Exécution réelle
-Pour désactiver réellement les films, modifiez `dry_run` en `false` dans `config.json` :
-```json
-"dry_run": false
-```
-Puis relancez le script :
-```bash
-python radarr_unmonitor.py
-```
-
-### 📜 Logs et Debug
-Les logs sont enregistrés dans `radarr_unmonitor.log` et incluent :
-- **Nombre de films récupérés et filtrés**
-- **Films analysés et détectés**
-- **Films mis à jour avec succès** ou **erreurs rencontrées**
+**Mode Simulation (Dry-Run)** :
+Si activé dans `config.json`, le script affiche les films qui **auraient été désactivés**, sans modifier Radarr.
 
 ---
 
-## 📺 Sonarr Unmonitor
+### 2️⃣ **Sonarr Unmonitor** (`sonarr_unmonitor.py`)
 
-### 🔹 Description
-Ce script permet de **désactiver le monitoring des épisodes dans Sonarr** en fonction des critères définis dans `config.json`.
+**Description** :
+Similaire à Radarr Unmonitor, mais pour les séries dans **Sonarr**. Il désactive le monitoring des épisodes selon des critères définis.
 
-### 🔧 Utilisation
+**Exécution** :
+
 ```bash
 python sonarr_unmonitor.py
 ```
 
-### Mode Simulation (DRY_RUN)
-Si `dry_run` est activé dans `config.json`, le script affichera uniquement les épisodes qui **auraient été désactivés**, sans modifier Sonarr.
-
-### Mode Exécution réelle
-Pour désactiver réellement les épisodes, modifiez `dry_run` en `false` dans `config.json` :
-```json
-"dry_run": false
-```
-Puis relancez le script :
-```bash
-python sonarr_unmonitor.py
-```
-
-### 📜 Logs et Debug
-Les logs sont enregistrés dans `sonarr_unmonitor.log` et incluent :
-- **Nombre d'épisodes récupérés et filtrés**
-- **Épisodes analysés et détectés**
-- **Épisodes mis à jour avec succès** ou **erreurs rencontrées**
+**Mode Simulation (Dry-Run)** :
+Active ou désactive le mode test via `config.json`.
 
 ---
 
-## 📝 Notes
-- Assurez-vous que **Radarr et Sonarr** sont accessibles depuis le script.
-- Vérifiez les **clés API** dans `config.json`.
-- En cas d'erreur `202 Accepted`, Sonarr ou Radarr peuvent prendre quelques secondes à traiter la modification.
+### 3️⃣ **Radarr Cleaner** (`RadarrCleaner.py`)
 
-## 🎯 Exemples de Logs
-**Film détecté et désactivé dans Radarr :**
-```
-2025-02-18 14:05:01 - INFO - 🛠️ Traitement du film 'Avatar' (2009, ID: 123)...
-2025-02-18 14:05:02 - INFO - ✅ Film 'Avatar' (2009, ID: 123) marqué comme NON MONITORÉ avec succès.
+**Description** :
+Ce script supprime les films marqués comme "Removed from TMDB" dans Radarr et qui n'ont pas de fichier téléchargé.
+
+**Exécution** :
+
+```bash
+python RadarrCleaner.py
 ```
 
-**Épisode détecté et désactivé dans Sonarr :**
+**Mode Simulation (Dry-Run)** :
+Affiche les films qui seraient supprimés sans les retirer réellement.
+
+---
+
+### 4️⃣ **qBittorrent Cleaner** (`QBCleaner.py`)
+
+**Description** :
+Ce script connecte à **qBittorrent** et supprime les torrents les plus anciens pour libérer de l'espace disque si celui-ci est inférieur au seuil défini dans `config.json`.
+
+**Exécution** :
+
+```bash
+python QBCleaner.py
 ```
-2025-02-18 14:10:01 - INFO - 🛠️ Traitement de l'épisode 'The Mandalorian' (S02E05, ID: 456)...
-2025-02-18 14:10:02 - INFO - ✅ Épisode 'The Mandalorian' (S02E05, ID: 456) marqué comme NON MONITORÉ avec succès.
+
+**Fonctionnalités** :
+
+- Vérifie l'espace disque
+- Supprime les torrents les plus anciens en batch
+- Gère les suppressions en mode simulation (Dry-Run)
+
+---
+
+### 5️⃣ **Arr Folder Renamer** (`arr_folder_renamer.py`)
+
+**Description** :
+Ce script ajuste les chemins des fichiers dans **Sonarr** et **Radarr** pour inclure les identifiants IMDb et TMDB, facilitant l'intégration avec **Plex**.
+
+**Exécution** :
+
+```bash
+python arr_folder_renamer.py
 ```
+
+**Fonctionnalités** :
+
+- Modifie les chemins des fichiers en ajoutant IMDb/TMDB
+- Rafraîchit les bibliothèques dans Radarr et Sonarr
+- Rafraîchit Plex après modification
+
+---
+
+## 📜 Logs et Debug
+
+Chaque script enregistre ses logs dans un fichier spécifique :
+
+- `radarr_unmonitor.log`
+- `sonarr_unmonitor.log`
+- `radarr_cleaner.log`
+- `qbittorrent_cleanup.log`
+- `arr_folder_renamer.log`
+
+Les logs incluent :
+✅ Films/Séries analysés et filtrés\
+✅ Actions entreprises (modifications, suppressions)\
+✅ Erreurs et avertissements
+
+---
 
 ## 📌 Conclusion
-**Media Management Tools (MMT)** est un package d'outils conçu pour **automatiser la gestion des films et des séries** dans Radarr et Sonarr. 🚀
 
-D'autres outils viendront s'ajouter à cette collection. Restez à l'écoute !
+Ces scripts automatisent la gestion des médias pour Radarr, Sonarr, qBittorrent et Plex, permettant un meilleur contrôle des fichiers et de l’espace disque. 🚀
+
+
 
