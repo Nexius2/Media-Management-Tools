@@ -4,7 +4,7 @@
 # Media Management Tools (MMT) - Radarr Unmonitor
 # Auteur       : Nexius2
 # Date         : 2025-02-18
-# Version      : 1.1
+# Version      : 1.2
 # Description  : Script permettant de désactiver le monitoring
 #                des films dans Radarr en fonction des critères
 #                définis dans `config.json`.
@@ -156,9 +156,10 @@ def should_unmonitor(movie):
         - Autorise des variantes comme "1080p" en plus de "1080".
         """
         if term.isdigit():  # Si le terme est un nombre (ex: 1080, 4K)
-            pattern = rf"(?:^|[\[\]\+\-&\s\._]){re.escape(term)}(?:p|i|$|[\[\]\+\-&\s\._])"
+            pattern = rf"(?:^|[\[\]\+\-&\s\._,]){re.escape(term)}(?:p|i|$|[\[\]\+\-&\s\._,])"
         else:
-            pattern = rf"(?:^|[\[\]\+\-&\s\._]){re.escape(term.lower())}(?:$|[\[\]\+\-&\s\._])"
+            pattern = rf"(?:^|[\[\]\+\-&\s\._,]){re.escape(term.lower())}(?:$|[\[\]\+\-&\s\._,])"
+
 
         match = re.search(pattern, relative_path)
         if match:
@@ -172,7 +173,10 @@ def should_unmonitor(movie):
 
     # Vérifier si un groupe de critères correspond
     for search_group in SEARCH_TERMS:
-        if all(match_criteria(term) for term in search_group):
+        if isinstance(search_group, list) and all(match_criteria(term) for term in search_group):
+
+#    for search_group in SEARCH_TERMS:
+#        if all(match_criteria(term) for term in search_group):
             logging.info(f"🎯 Film détecté : {title} ({year}, ID: {movie_id}) - Fichier: {relative_path} - Correspondance: {search_group}")
             return True
 
