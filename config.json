@@ -48,7 +48,7 @@
 	"QBCleaner": {
 		"qbittorrent_url": "http://192.168.1.70:8080",
 		"qbittorrent_username": "admin",
-		"qbittorrent_password": "Qbittorent2022!",
+		"qbittorrent_password": "xxxxxxxxxxxx",
 		"min_free_space": 6,
 		"target_free_space": 8,
 		"dry_run": true
