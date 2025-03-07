@@ -2,7 +2,7 @@
 #########################################################
 # Media Management Tools (MMT) - RadarrCleaner
 # Auteur       : Nexius2
-# Version      : 0.1.1
+# Version      : 0.2
 # Description  : Suppression des films supprimés de TMDb et non téléchargés en fonction des critères
 #                définis dans `config.json`.
 # Licence      : MIT
@@ -178,6 +178,8 @@ logger.addHandler(console_handler)
 
 logger.info("✅ Logging initialisé avec succès. Fichier de log utilisé : " + LOG_FILE)
 
+# 🔹 Définition des headers API
+HEADERS = {"X-Api-Key": RADARR_API_KEY}
 
 # ✅ Connexion à Radarr
 try:
@@ -191,6 +193,8 @@ except Exception as e:
 try:
     films = radarr.all_movies()
     logger.info(f"📂 {len(films)} films récupérés depuis Radarr.")
+    for film in films:
+        logger.debug(f"🎬 {film.title} (TMDb: {film.tmdbId})")
 except Exception as e:
     logger.error(f"❌ Erreur lors de la récupération des films : {e}")
     exit(1)
@@ -205,110 +209,95 @@ if logger.level == logging.DEBUG:
     logger.debug(json.dumps(films_a_supprimer, indent=4, ensure_ascii=False))
 #print(json.dumps(films_a_supprimer, indent=4, ensure_ascii=False))
 logger.info(f"📋 {len(films_a_supprimer)} films non téléchargés détectés.")
+for film in films_non_telecharges:
+    logger.debug(f"🚫 {film.title} (TMDb: {film.tmdbId})")
 
-# 📌 Fonction pour récupérer les logs de Radarr
-def get_logs():
-    url = f"{RADARR_URL}/api/v3/log?page=1&pageSize=100"
-    headers = {"X-Api-Key": RADARR_API_KEY}
-    response = requests.get(url, headers=headers)
 
-    if response.status_code == 200:
-        return response.json()
-    else:
-        logger.error(f"❌ Erreur lors de la récupération des logs : {response.status_code}")
-        return []
 
-# 📌 Fonction pour récupérer les messages de santé de Radarr
-def get_health_messages():
+# 📌 Étape 1 : Récupérer les films supprimés de TMDb via /api/v3/health
+def get_removed_tmdb_ids():
     url = f"{RADARR_URL}/api/v3/health"
-    headers = {"X-Api-Key": RADARR_API_KEY}
-    response = requests.get(url, headers=headers)
+    response = requests.get(url, headers=HEADERS)
 
     if response.status_code == 200:
-        return response.json()
+        health_messages = response.json()
+        removed_tmdb_ids = set()
+
+        for message in health_messages:
+            if message.get("source") == "RemovedMovieCheck" and message.get("type") == "error":
+                found_ids = re.findall(r"tmdbid (\d+)", message["message"])
+                removed_tmdb_ids.update(map(int, found_ids))  # Convertir en `int`
+        
+        return removed_tmdb_ids
+
     else:
-        logger.error(f"❌ Erreur lors de la récupération des messages de santé : {response.status_code}")
-        return []
+        print(f"❌ Erreur lors de la récupération des messages de santé : {response.status_code}")
+        return set()
 
-
-# 📌 Fonction pour récupérer la liste complète des films
+# 📌 Étape 2 : Récupérer la liste des films stockés dans Radarr via /api/v3/movie
 def get_movies():
     url = f"{RADARR_URL}/api/v3/movie"
-    headers = {"X-Api-Key": RADARR_API_KEY}
-    response = requests.get(url, headers=headers)
+    response = requests.get(url, headers=HEADERS)
 
     if response.status_code == 200:
         return response.json()
     else:
-        logger.error(f"❌ Erreur lors de la récupération des films : {response.status_code}")
+        print(f"❌ Erreur lors de la récupération des films : {response.status_code}")
         return []
 
-# 📌 Fonction pour supprimer un film de Radarr
-def delete_movie(movie_id):
+# 📌 Étape 3 : Supprimer un film de Radarr
+def delete_movie(movie_id, title):
     url = f"{RADARR_URL}/api/v3/movie/{movie_id}?deleteFiles=false"
-    headers = {"X-Api-Key": RADARR_API_KEY}
 
     if DRY_RUN:
-        logger.info(f"🔧 DRY RUN : Film {movie_id} aurait été supprimé.")
+        print(f"🔧 DRY RUN : Le film '{title}' (ID {movie_id}) aurait été supprimé.")
         return
 
-    response = requests.delete(url, headers=headers)
+    response = requests.delete(url, headers=HEADERS)
 
     if response.status_code == 200:
-        logger.info(f"🗑 Film supprimé : ID {movie_id}")
+        print(f"🗑 Film supprimé : {title} (ID {movie_id})")
     else:
-        logger.error(f"❌ Erreur lors de la suppression du film {movie_id} : {response.status_code}")
+        print(f"❌ Erreur lors de la suppression du film {title} (ID {movie_id}) : {response.status_code}")
 
 
-# 📌 Fonction principale
+# 📌 Étape 4 : Processus principal
 def main():
-    logger.info("🚀 Démarrage de l'analyse des films 'Removed from TMDB'...")
+    print("🚀 Démarrage de l'analyse des films 'Removed from TMDB'...")
 
-    # 🔹 Étape 1 : Récupérer les messages de santé
-    health_messages = get_health_messages()
-
-    # 📋 Extraire les `tmdbId` des films concernés depuis "RemovedMovieCheck"
-    removed_tmdb_ids = set()
-    for message in health_messages:
-        if message.get("source") == "RemovedMovieCheck":
-            match = re.findall(r"tmdbid (\d+)", message.get("message", ""))
-            removed_tmdb_ids.update(map(int, match))  # Convertir en `int` pour comparer avec Radarr
+    # 🔹 Récupérer les TMDb ID des films supprimés de TMDb
+    removed_tmdb_ids = get_removed_tmdb_ids()
 
     if not removed_tmdb_ids:
-        logger.info("✅ Aucun film marqué comme 'Removed from TMDB' trouvé.")
+        print("✅ Aucun film marqué comme 'Removed from TMDB' trouvé.")
         return
 
-    logger.info(f"📋 {len(removed_tmdb_ids)} films détectés comme 'Removed from TMDB'.")
+    print(f"📋 {len(removed_tmdb_ids)} films détectés comme 'Removed from TMDB'.")
 
-    # 🔹 Étape 2 : Récupérer la liste des films et filtrer ceux qui ne sont pas téléchargés
+    # 🔹 Récupérer les films stockés dans Radarr
     movies = get_movies()
-    movies_to_remove = []
 
-    for movie in movies:
-        if movie["tmdbId"] in removed_tmdb_ids and not movie["hasFile"]:
-            movies_to_remove.append({"title": movie["title"], "id": movie["id"], "tmdbId": movie["tmdbId"]})
+    # 🔹 Filtrer les films à supprimer (présents dans removed_tmdb_ids + non téléchargés)
+    movies_to_remove = [
+        {"id": movie["id"], "title": movie["title"], "tmdbId": movie["tmdbId"]}
+        for movie in movies if movie["tmdbId"] in removed_tmdb_ids and not movie["hasFile"]
+    ]
 
-    # 🔹 Étape 3 : Affichage et suppression conditionnelle
-    if movies_to_remove:
-        #print("📋 Films à supprimer (non téléchargés et retirés de TMDB) :")
-        if logger.level == logging.DEBUG:
-            logger.debug(json.dumps(movies_to_remove, indent=4, ensure_ascii=False))
+    # 📌 Affichage des films à supprimer
+    print(f"📋 {len(movies_to_remove)} films non téléchargés à supprimer :")
+    for movie in movies_to_remove:
+        print(f"  - {movie['title']} (TMDb: {movie['tmdbId']})")
 
-        #print(json.dumps(movies_to_remove, indent=4, ensure_ascii=False))
-        logger.info(f"📋 {len(movies_to_remove)} films à supprimer.")
-
-        # 🔥 Suppression avec gestion de DRY_RUN
-        if DRY_RUN:
-            logger.info("🔧 Mode DRY RUN activé, aucune suppression effectuée.")
-            print("🔧 Mode DRY RUN activé. Aucune suppression ne sera effectuée.")
-        else:
-            for movie in movies_to_remove:
-                delete_movie(movie["id"])
-            print("✅ Suppression effectuée.")
+    # 🔥 Suppression des films si DRY_RUN est désactivé
+    if not DRY_RUN:
+        for movie in movies_to_remove:
+            delete_movie(movie["id"], movie["title"])
+        print("✅ Suppression terminée.")
     else:
-        logger.info("✅ Aucun film 'Removed from TMDB' sans fichier détecté.")
+        print("🔧 Mode DRY RUN activé. Aucune suppression ne sera effectuée.")
 
-if __name__ == '__main__':
+# Lancer le script
+if __name__ == "__main__":
     main()
 
 
