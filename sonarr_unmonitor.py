@@ -4,19 +4,151 @@
 #########################################################
 # Media Management Tools (MMT) - Sonarr Unmonitor
 # Auteur       : Nexius2
-# Version      : 4.4
+# Version      : 4.4.2.1
 # Description  : Script permettant de désactiver le monitoring
 #                des épisodes dans Sonarr en fonction des critères
 #                définis dans `config.json`.
 # Licence      : MIT
 #########################################################
+
+🛠 Sonarr Unmonitor - Désactivation automatique des épisodes dans Sonarr
+
+=============================================================
+📌 DESCRIPTION
+-------------------------------------------------------------
+Sonarr Unmonitor est un script Python permettant de **désactiver le monitoring**
+des épisodes dans Sonarr en fonction des critères définis dans `config.json`.
+Il permet d'éviter que des épisodes déjà récupérés soient à nouveau téléchargés.
+
+📂 Fonctionnalités :
+- Analyse les séries et leurs **épisodes monitorés avec un fichier**.
+- Vérifie si le **nom du fichier** correspond aux critères de désactivation.
+- Désactive automatiquement le monitoring des épisodes concernés.
+- **Mode simulation (DRY_RUN)** pour tester sans effectuer de modifications.
+- **Logs détaillés** des épisodes traités et des erreurs éventuelles.
+
+=============================================================
+📜 FONCTIONNEMENT
+-------------------------------------------------------------
+1. **Connexion à Sonarr** via son API.
+2. **Récupération de la liste des séries et épisodes monitorés** ayant un fichier.
+3. **Analyse du nom du fichier** et comparaison avec les critères définis.
+4. **Désactivation du monitoring** pour les épisodes correspondants.
+5. **Gestion du mode simulation** (`dry_run` activé/désactivé).
+6. **Gestion avancée des erreurs et des logs**.
+
+=============================================================
+⚙️ CONFIGURATION (config.json)
+-------------------------------------------------------------
+Le script utilise un fichier de configuration JSON contenant les paramètres suivants :
+
+{
+    "services": {
+        "sonarr": {
+            "url": "http://192.168.1.100:8989",
+            "api_key": "VOTRE_CLE_API_SONARR"
+        }
+    },
+    "sonarr_unmonitor": {
+        "log_file": "sonarr_unmonitor.log",
+        "log_level": "INFO",
+        "dry_run": true,
+        "search_terms": [
+            ["1080", "FR", "MULTI"],
+            ["4K", "FR", "MULTI"]
+        ]
+    }
+}
+
+| Clé                           | Description |
+|--------------------------------|-------------|
+| `services.sonarr.url`         | URL de l'instance Sonarr |
+| `services.sonarr.api_key`     | Clé API pour Sonarr |
+| `sonarr_unmonitor.log_file`   | Nom du fichier de log |
+| `sonarr_unmonitor.log_level`  | Niveau de logs (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
+| `sonarr_unmonitor.dry_run`    | `true` = simulation, `false` = modifications réelles |
+| `sonarr_unmonitor.search_terms` | Liste des groupes de critères pour la désactivation |
+
+📌 **Critères de désactivation (`search_terms`)**
+- Chaque groupe de termes doit être **présent simultanément** dans le nom du fichier.
+- Exemple :
+  - `["1080", "FR", "MULTI"]` ➝ Désactive si les trois termes sont présents.
+  - `["4K", "FR", "MULTI"]` ➝ Désactive si ces trois termes sont présents.
+
+=============================================================
+🚀 UTILISATION
+-------------------------------------------------------------
+1. **Installez les dépendances requises** :
+   pip install requests
+
+2. **Créez/modifiez le fichier `config.json`** avec vos paramètres.
+
+3. **Lancez le script en mode simulation (DRY_RUN activé)** :
+   python sonarr_unmonitor.py
+   - Aucun épisode ne sera désactivé, mais le script affichera ceux qui le seraient.
+
+4. **Exécutez le script avec modifications réelles** (après avoir mis `dry_run` sur `false` dans `config.json`) :
+   python sonarr_unmonitor.py
+   - Les épisodes correspondant aux critères seront réellement désactivés.
+
+=============================================================
+📄 LOGS ET DEBUG
+-------------------------------------------------------------
+Le script génère des logs détaillés :
+- Les logs sont enregistrés dans le fichier spécifié (`sonarr_unmonitor.log`).
+- En mode `DEBUG`, toutes les analyses et modifications sont enregistrées.
+- Les erreurs de connexion ou de requête API sont également loguées.
+
+=============================================================
+🛑 PRÉCAUTIONS
+-------------------------------------------------------------
+- **Aucun fichier n'est supprimé**, seule la surveillance est désactivée.
+- **Le monitoring peut être réactivé** manuellement dans Sonarr si nécessaire.
+- **Vérifiez les logs avant de désactiver `dry_run`**, pour éviter des désactivations indésirables.
+
+=============================================================
+🔥 EXEMPLE D'EXÉCUTION EN MODE `DRY_RUN`
+-------------------------------------------------------------
+python sonarr_unmonitor.py
+
+📝 **Exemple de sortie :**
+🚀 Début du traitement des séries dans Sonarr...
+📥 500 séries récupérées depuis Sonarr.
+✅ 480 séries avec épisodes monitorés et téléchargés.
+📋 25 épisodes détectés correspondant aux critères de désactivation.
+🔧 Mode DRY RUN activé. Aucun épisode ne sera modifié.
+
+=============================================================
+🗑 EXEMPLE D'EXÉCUTION AVEC MODIFICATIONS EFFECTIVES
+-------------------------------------------------------------
+Après avoir mis `dry_run` sur `false` dans `config.json` :
+
+python sonarr_unmonitor.py
+
+📝 **Exemple de sortie :**
+🚀 Début du traitement des séries dans Sonarr...
+📥 500 séries récupérées depuis Sonarr.
+✅ 480 séries avec épisodes monitorés et téléchargés.
+📋 25 épisodes détectés correspondant aux critères de désactivation.
+📝 Épisode "Breaking Bad S02E05" marqué comme NON MONITORÉ.
+📝 Épisode "Game of Thrones S04E03" marqué comme NON MONITORÉ.
+✅ Fin du traitement. 25 épisodes ont été désactivés.
+
+=============================================================
+💡 ASTUCE
+-------------------------------------------------------------
+Vous pouvez programmer l'exécution automatique de ce script 
+via un **cron job** ou une **tâche planifiée Windows**.
+
 """
+
 
 import requests
 import json
 import logging
 from logging.handlers import RotatingFileHandler
 import re
+import time
 
 # Charger la configuration
 CONFIG_FILE = "config.json"
@@ -97,9 +229,9 @@ def should_unmonitor(episode):
         - Autorise des variantes comme "1080p" en plus de "1080".
         """
         if term.isdigit():  # Si le terme est un nombre (ex: 1080, 4K)
-            pattern = rf"(?:^|[\[\]\+\-&\s\._]){re.escape(term)}(?:p|i|$|[\[\]\+\-&\s\._])"
+            pattern = rf"(?:^|[\[\]\+\-&\s\._,]){re.escape(term)}(?:p|i|$|[\[\]\+\-&\s\._,])"
         else:
-            pattern = rf"(?:^|[\[\]\+\-&\s\._]){re.escape(term.lower())}(?:$|[\[\]\+\-&\s\._])"
+            pattern = rf"(?:^|[\[\]\+\-&\s\._,]){re.escape(term.lower())}(?:$|[\[\]\+\-&\s\._,])"
 
         match = re.search(pattern, normalized_filename)
         if match:
@@ -130,8 +262,9 @@ def get_series():
     logging.info(f"📥 {len(series_list)} séries récupérées depuis Sonarr.")
     return series_list
     
+
 def unmonitor_episode(episode):
-    """ Désactive le monitoring d'un épisode dans Sonarr """
+    """ Désactive le monitoring d'un épisode dans Sonarr et vérifie l'état après mise à jour """
     episode_id = episode["id"]
     title = episode.get("title", "Titre inconnu")
     season = episode.get("seasonNumber", "?")
@@ -146,12 +279,33 @@ def unmonitor_episode(episode):
     url = f"{SONARR_URL}/api/v3/episode/{episode_id}"
     episode_data = {"monitored": False}
 
-    response = requests.put(url, headers=HEADERS, json=episode_data)
+    max_retries = 5  # Nombre de tentatives en cas d'échec
+    for attempt in range(max_retries):
+        response = requests.put(url, headers=HEADERS, json=episode_data)
 
-    if response.status_code == 200:
-        logging.info(f"✅ Épisode '{title}' (S{season}E{episode_number}, ID: {episode_id}) marqué comme NON MONITORÉ avec succès.")
-    else:
-        logging.error(f"❌ Erreur lors de la mise à jour de l'épisode {episode_id}: {response.status_code} - {response.text}")
+        if response.status_code == 200:
+            logging.info(f"✅ Épisode '{title}' (S{season}E{episode_number}, ID: {episode_id}) marqué comme NON MONITORÉ avec succès.")
+            break
+        elif response.status_code == 202:
+            logging.warning(f"⚠️ Sonarr est lent à traiter '{title}' (S{season}E{episode_number}, ID: {episode_id}). Vérification après 3 secondes...")
+            time.sleep(3)  # Pause avant de vérifier l'état
+
+            # Vérifier si l'épisode a bien été mis à jour
+            check_response = requests.get(url, headers=HEADERS)
+            if check_response.status_code == 200:
+                updated_episode = check_response.json()
+                if not updated_episode.get("monitored", True):  # Si monitored est bien passé à False
+                    logging.info(f"✅ Vérification OK : Épisode '{title}' (S{season}E{episode_number}, ID: {episode_id}) est bien NON MONITORÉ après attente.")
+                    break
+            else:
+                logging.warning(f"⚠️ Impossible de vérifier l'état de '{title}' (S{season}E{episode_number}, ID: {episode_id}) après mise à jour.")
+        else:
+            logging.error(f"❌ Erreur lors de la mise à jour de l'épisode {episode_id}: {response.status_code} - {response.text}")
+            break
+
+    # Pause courte pour éviter un trop grand nombre de requêtes simultanées
+    time.sleep(1)
+
 
 
 def main():

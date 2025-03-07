@@ -1,3 +1,135 @@
+"""
+#########################################################
+# Media Management Tools (MMT) - RadarrCleaner
+# Auteur       : Nexius2
+# Version      : 0.1.1
+# Description  : Suppression des films supprimés de TMDb et non téléchargés en fonction des critères
+#                définis dans `config.json`.
+# Licence      : MIT
+#########################################################
+
+🛠 RadarrCleaner - Suppression des films supprimés de TMDb et non téléchargés
+
+=============================================================
+📌 DESCRIPTION
+-------------------------------------------------------------
+RadarrCleaner est un script Python qui analyse la bibliothèque Radarr et 
+supprime automatiquement les films qui :
+- Ont été marqués comme **"Removed from TMDb"** dans les messages de santé de Radarr.
+- **Ne sont pas encore téléchargés** (aucun fichier associé dans Radarr).
+
+L'objectif est de nettoyer la base de données de Radarr en supprimant 
+les films devenus obsolètes et qui n'ont jamais été récupérés.
+
+=============================================================
+📜 FONCTIONNEMENT
+-------------------------------------------------------------
+1. **Connexion à Radarr** via l'API.
+2. **Récupération des messages de santé de Radarr** pour identifier 
+   les films signalés comme "Removed from TMDb".
+3. **Extraction des `tmdbId` des films concernés**.
+4. **Vérification de la présence des fichiers** :
+   - Si un film marqué comme "Removed from TMDb" **n'a pas de fichier téléchargé**, 
+     il est ajouté à la liste des suppressions.
+5. **Suppression conditionnelle des films détectés** :
+   - Si **DRY_RUN est activé**, les films à supprimer sont listés mais **aucune suppression n'est effectuée**.
+   - Si **DRY_RUN est désactivé**, les films sont supprimés de Radarr (sans supprimer les fichiers, s'ils existent).
+
+=============================================================
+⚙️ CONFIGURATION (config.json)
+-------------------------------------------------------------
+Le script utilise un fichier de configuration JSON contenant les paramètres suivants :
+
+{
+    "services": {
+        "radarr": {
+            "url": "http://192.168.1.100:7878",
+            "api_key": "VOTRE_CLE_API_RADARR"
+        }
+    },
+    "RadarrCleaner": {
+        "log_file": "radarr_cleaner.log",
+        "log_level": "INFO",
+        "dry_run": true
+    }
+}
+
+| Clé                         | Description |
+|-----------------------------|-------------|
+| `services.radarr.url`       | URL de l'instance Radarr |
+| `services.radarr.api_key`   | Clé API pour l'accès à Radarr |
+| `RadarrCleaner.log_file`    | Nom du fichier de log |
+| `RadarrCleaner.log_level`   | Niveau de logs (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
+| `RadarrCleaner.dry_run`     | `true` = simulation, `false` = suppression effective |
+
+=============================================================
+🚀 UTILISATION
+-------------------------------------------------------------
+1. **Assurez-vous d'avoir Python installé** et les dépendances requises :
+   pip install arrapi requests
+
+2. **Créez/modifiez le fichier `config.json`** avec les bonnes informations.
+
+3. **Lancez le script en mode simulation (DRY_RUN activé)** :
+   python RadarrCleaner.py
+   - Aucun film ne sera supprimé, mais le script affichera ceux qui seraient supprimés.
+
+4. **Pour exécuter la suppression réelle**, désactivez `dry_run` dans `config.json` et exécutez :
+   python RadarrCleaner.py
+   - Les films marqués "Removed from TMDb" et non téléchargés seront supprimés.
+
+=============================================================
+📄 LOGS ET DEBUG
+-------------------------------------------------------------
+Le script génère des logs détaillés :
+- Les logs sont écrits dans le fichier spécifié (`radarr_cleaner.log`).
+- En mode `DEBUG`, tous les films concernés sont listés avec leur `tmdbId`.
+
+=============================================================
+🛑 PRÉCAUTIONS
+-------------------------------------------------------------
+- Ce script **ne supprime pas les fichiers déjà téléchargés**.
+- Si un film a été supprimé de TMDb mais qu’il est toujours disponible ailleurs, 
+  il sera quand même supprimé de Radarr.
+- Vérifiez toujours les logs avant d'exécuter le script sans `dry_run`.
+
+=============================================================
+🔥 EXEMPLE D'EXÉCUTION EN MODE `DRY_RUN`
+-------------------------------------------------------------
+python RadarrCleaner.py
+
+📝 **Exemple de sortie :**
+🚀 Démarrage de l'analyse des films 'Removed from TMDB'...
+✅ Connexion réussie à Radarr.
+📋 3 films détectés comme 'Removed from TMDB'.
+📋 2 films à supprimer (non téléchargés et retirés de TMDB).
+🔧 Mode DRY RUN activé. Aucune suppression ne sera effectuée.
+
+=============================================================
+🗑 EXEMPLE D'EXÉCUTION AVEC SUPPRESSION EFFECTIVE
+-------------------------------------------------------------
+Après avoir mis `dry_run` sur `false` dans `config.json` :
+
+python RadarrCleaner.py
+
+📝 **Exemple de sortie :**
+🚀 Démarrage de l'analyse des films 'Removed from TMDB'...
+✅ Connexion réussie à Radarr.
+📋 3 films détectés comme 'Removed from TMDB'.
+📋 2 films à supprimer (non téléchargés et retirés de TMDB).
+🗑 Film supprimé : ID 12345
+🗑 Film supprimé : ID 67890
+✅ Suppression effectuée.
+
+=============================================================
+💡 ASTUCE
+-------------------------------------------------------------
+Vous pouvez programmer l'exécution automatique de ce script 
+via un cron job ou une tâche planifiée.
+
+"""
+
+
 from arrapi import RadarrAPI
 import json
 import logging

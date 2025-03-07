@@ -4,39 +4,144 @@
 # Media Management Tools (MMT) - Radarr Unmonitor
 # Auteur       : Nexius2
 # Date         : 2025-02-18
-# Version      : 1.2
+# Version      : 1.2.1
 # Description  : Script permettant de désactiver le monitoring
 #                des films dans Radarr en fonction des critères
 #                définis dans `config.json`.
 # Licence      : MIT
 #########################################################
 
-# 📌 Utilisation :
-# Exécuter le script via la ligne de commande :
-#   python radarr_unmonitor.py
-#
-# Mode Simulation (Dry-Run) :
-#   - Défini dans `config.json`, le mode Dry-Run affiche les films
-#     qui seraient désactivés sans les modifier réellement.
-#
-# Mode Exécution :
-#   - Modifier "dry_run": false dans `config.json` pour que le script
-#     applique réellement les modifications.
+🛠 Radarr Unmonitor - Désactivation automatique des films dans Radarr
 
-# 🔹 Dépendances :
-# - Python 3.x
-# - Module `requests` (pip install requests)
+=============================================================
+📌 DESCRIPTION
+-------------------------------------------------------------
+Radarr Unmonitor est un script Python permettant de **désactiver le monitoring**
+des films dans Radarr en fonction de critères définis dans `config.json`.
+Il est utile pour éviter que des films déjà récupérés soient téléchargés à nouveau.
 
-# 🔧 Configuration :
-# - Vérifiez que `config.json` est bien rempli avec l'URL et la clé API.
-# - Ajoutez ou modifiez les critères de désactivation selon vos besoins.
+📂 Fonctionnalités :
+- Analyse la liste des films **monitorés** et **téléchargés**.
+- Vérifie si le **nom du fichier** correspond aux critères de désactivation.
+- Désactive automatiquement le monitoring des films correspondants.
+- **Mode simulation (DRY_RUN)** pour tester sans effectuer de modifications.
+- **Logs détaillés** des films traités et des erreurs éventuelles.
 
-# 📝 Journalisation :
-# - Les logs sont enregistrés dans radarr_unmonitor.log
-# - Inclut les films traités, les erreurs et les mises à jour effectuées.
+=============================================================
+📜 FONCTIONNEMENT
+-------------------------------------------------------------
+1. **Connexion à Radarr** via son API.
+2. **Récupération de la liste des films monitorés** et qui ont un fichier.
+3. **Vérification du nom du fichier** pour voir s'il correspond aux critères définis.
+4. **Désactivation du monitoring** pour les films correspondants.
+5. **Gestion du mode simulation** (`dry_run` activé/désactivé).
+6. **Gestion avancée des erreurs et des logs**.
 
-#########################################################
+=============================================================
+⚙️ CONFIGURATION (config.json)
+-------------------------------------------------------------
+Le script utilise un fichier de configuration JSON contenant les paramètres suivants :
+
+{
+    "services": {
+        "radarr": {
+            "url": "http://192.168.1.100:7878",
+            "api_key": "VOTRE_CLE_API_RADARR"
+        }
+    },
+    "radarr_unmonitor": {
+        "log_file": "radarr_unmonitor.log",
+        "log_level": "INFO",
+        "dry_run": true,
+        "search_terms": [
+            ["1080", "FR", "MULTI"],
+            ["4K", "FR", "MULTI"]
+        ]
+    }
+}
+
+| Clé                          | Description |
+|------------------------------|-------------|
+| `services.radarr.url`        | URL de l'instance Radarr |
+| `services.radarr.api_key`    | Clé API pour Radarr |
+| `radarr_unmonitor.log_file`  | Nom du fichier de log |
+| `radarr_unmonitor.log_level` | Niveau de logs (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
+| `radarr_unmonitor.dry_run`   | `true` = simulation, `false` = modifications réelles |
+| `radarr_unmonitor.search_terms` | Liste des groupes de critères pour la désactivation |
+
+📌 **Critères de désactivation (`search_terms`)**
+- Chaque groupe de termes doit être **présent simultanément** dans le nom du fichier.
+- Exemple :
+  - `["1080", "FR", "MULTI"]` ➝ Désactive si les trois termes sont présents.
+  - `["4K", "FR", "MULTI"]` ➝ Désactive si ces trois termes sont présents.
+
+=============================================================
+🚀 UTILISATION
+-------------------------------------------------------------
+1. **Installez les dépendances requises** :
+   pip install requests
+
+2. **Créez/modifiez le fichier `config.json`** avec vos paramètres.
+
+3. **Lancez le script en mode simulation (DRY_RUN activé)** :
+   python radarr_unmonitor.py
+   - Aucun film ne sera désactivé, mais le script affichera ceux qui le seraient.
+
+4. **Exécutez le script avec modifications réelles** (après avoir mis `dry_run` sur `false` dans `config.json`) :
+   python radarr_unmonitor.py
+   - Les films correspondant aux critères seront réellement désactivés.
+
+=============================================================
+📄 LOGS ET DEBUG
+-------------------------------------------------------------
+Le script génère des logs détaillés :
+- Les logs sont enregistrés dans le fichier spécifié (`radarr_unmonitor.log`).
+- En mode `DEBUG`, toutes les analyses et modifications sont enregistrées.
+- Les erreurs de connexion ou de requête API sont également loguées.
+
+=============================================================
+🛑 PRÉCAUTIONS
+-------------------------------------------------------------
+- **Aucun fichier n'est supprimé**, seule la surveillance est désactivée.
+- **Le monitoring peut être réactivé** manuellement dans Radarr si nécessaire.
+- **Vérifiez les logs avant de désactiver `dry_run`**, pour éviter des désactivations indésirables.
+
+=============================================================
+🔥 EXEMPLE D'EXÉCUTION EN MODE `DRY_RUN`
+-------------------------------------------------------------
+python radarr_unmonitor.py
+
+📝 **Exemple de sortie :**
+🚀 Début du traitement des films dans Radarr...
+📥 1500 films récupérés depuis Radarr.
+✅ 1200 films monitorés et téléchargés.
+📋 50 films détectés correspondant aux critères de désactivation.
+🔧 Mode DRY RUN activé. Aucun film ne sera modifié.
+
+=============================================================
+🗑 EXEMPLE D'EXÉCUTION AVEC MODIFICATIONS EFFECTIVES
+-------------------------------------------------------------
+Après avoir mis `dry_run` sur `false` dans `config.json` :
+
+python radarr_unmonitor.py
+
+📝 **Exemple de sortie :**
+🚀 Début du traitement des films dans Radarr...
+📥 1500 films récupérés depuis Radarr.
+✅ 1200 films monitorés et téléchargés.
+📋 50 films détectés correspondant aux critères de désactivation.
+📝 Film "Inception (2010)" marqué comme NON MONITORÉ.
+📝 Film "Avatar (2009)" marqué comme NON MONITORÉ.
+✅ Fin du traitement. 50 films ont été désactivés.
+
+=============================================================
+💡 ASTUCE
+-------------------------------------------------------------
+Vous pouvez programmer l'exécution automatique de ce script 
+via un **cron job** ou une **tâche planifiée Windows**.
+
 """
+
 
 
 import requests

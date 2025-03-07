@@ -4,20 +4,159 @@
 #########################################################
 # Media Management Tools (MMT) - Arr folder renamer
 # Auteur       : Nexius2
-# Version      : 0.21
+# Version      : 0.21.1
 # Description  : Script permettant de modifier le path pour correspondre aux besoin de plex via Sonarr et Radarren fonction des critères
 #                définis dans `config.json`.
 # Licence      : MIT
 #########################################################
+
+🛠 Arr Folder Renamer - Gestion des chemins des médias pour Sonarr & Radarr
+
+=============================================================
+📌 DESCRIPTION
+-------------------------------------------------------------
+Arr Folder Renamer est un script Python permettant d'automatiser la modification 
+des chemins des fichiers médias dans Sonarr et Radarr. Il assure la compatibilité 
+avec Plex en renommant les dossiers selon les critères définis dans `config.json`.
+
+📂 Fonctionnalités :
+- Ajoute les identifiants **IMDB**, **TVDB** et **TMDB** aux chemins des médias.
+- Vérifie et corrige les noms de dossiers pour éviter les incohérences.
+- Gère **Sonarr** pour les séries et **Radarr** pour les films.
+- Peut fonctionner en **mode simulation (dry-run)** sans modification réelle.
+- Assure l'attente et la synchronisation avec **Plex** pour rafraîchir la bibliothèque.
+
+=============================================================
+📜 FONCTIONNEMENT
+-------------------------------------------------------------
+1. **Connexion aux API de Sonarr et Radarr** via leurs clés API.
+2. **Récupération des informations des séries et films** stockés dans Sonarr/Radarr.
+3. **Analyse des chemins actuels** :
+   - Vérifie si les identifiants IMDB/TVDB/TMDB sont présents.
+   - Ajoute les identifiants manquants dans le chemin si nécessaire.
+4. **Mise à jour des chemins des médias** dans Sonarr et Radarr.
+5. **Vérification du déplacement des fichiers** après modification.
+6. **Rafraîchissement des bibliothèques Plex** une fois les changements terminés.
+
+=============================================================
+⚙️ CONFIGURATION (config.json)
+-------------------------------------------------------------
+Le script utilise un fichier de configuration JSON contenant les paramètres suivants :
+
+{
+    "services": {
+        "sonarr": {
+            "url": "http://192.168.1.100:8989",
+            "api_key": "VOTRE_CLE_API_SONARR"
+        },
+        "radarr": {
+            "url": "http://192.168.1.100:7878",
+            "api_key": "VOTRE_CLE_API_RADARR"
+        },
+        "plex": {
+            "url": "http://192.168.1.200:32400",
+            "api_key": "VOTRE_CLE_API_PLEX"
+        }
+    },
+    "arr_folder_renamer": {
+        "log_file": "arr_folder_renamer.log",
+        "log_level": "INFO",
+        "dry_run": true,
+        "work_limit": 50,
+        "run_sonarr": true,
+        "run_radarr": true
+    }
+}
+
+| Clé                           | Description |
+|--------------------------------|-------------|
+| `services.sonarr.url`         | URL de l'instance Sonarr |
+| `services.sonarr.api_key`     | Clé API pour Sonarr |
+| `services.radarr.url`         | URL de l'instance Radarr |
+| `services.radarr.api_key`     | Clé API pour Radarr |
+| `services.plex.url`           | URL de l'instance Plex |
+| `services.plex.api_key`       | Clé API pour Plex |
+| `arr_folder_renamer.log_file` | Fichier de log |
+| `arr_folder_renamer.log_level`| Niveau de logs (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
+| `arr_folder_renamer.dry_run`  | `true` = simulation, `false` = modifications réelles |
+| `arr_folder_renamer.work_limit` | Nombre max de modifications par exécution |
+| `arr_folder_renamer.run_sonarr` | `true` = activer Sonarr, `false` = désactiver |
+| `arr_folder_renamer.run_radarr` | `true` = activer Radarr, `false` = désactiver |
+
+=============================================================
+🚀 UTILISATION
+-------------------------------------------------------------
+1. **Installez les dépendances requises** :
+   pip install requests
+
+2. **Créez/modifiez le fichier `config.json`** avec vos paramètres.
+
+3. **Lancez le script en mode simulation (DRY_RUN activé)** :
+   python arr_folder_renamer.py
+   - Aucun changement ne sera effectué, mais le script affichera les chemins qui seraient modifiés.
+
+4. **Exécutez le script avec modifications réelles** (après avoir mis `dry_run` sur `false` dans `config.json`) :
+   python arr_folder_renamer.py
+   - Les chemins des fichiers seront modifiés dans Sonarr et Radarr.
+
+=============================================================
+📄 LOGS ET DEBUG
+-------------------------------------------------------------
+Le script génère des logs détaillés :
+- Les logs sont enregistrés dans le fichier spécifié (`arr_folder_renamer.log`).
+- En mode `DEBUG`, toutes les actions et modifications sont enregistrées.
+
+=============================================================
+🛑 PRÉCAUTIONS
+-------------------------------------------------------------
+- Ce script **ne supprime aucun fichier**, il ne fait que modifier les chemins.
+- Si un film ou une série a un chemin incorrect dans Sonarr/Radarr, Plex risque de ne pas le retrouver immédiatement.
+- Vérifiez toujours les logs avant d'exécuter le script sans `dry_run`.
+
+=============================================================
+🔥 EXEMPLE D'EXÉCUTION EN MODE `DRY_RUN`
+-------------------------------------------------------------
+python arr_folder_renamer.py
+
+📝 **Exemple de sortie :**
+🚀 Démarrage du script...
+✅ Connexion réussie à Sonarr et Radarr.
+📋 10 séries et 15 films analysés.
+📂 3 séries et 5 films nécessitent une correction du chemin.
+🔧 Mode DRY RUN activé. Aucune modification ne sera effectuée.
+
+=============================================================
+🗑 EXEMPLE D'EXÉCUTION AVEC MODIFICATIONS EFFECTIVES
+-------------------------------------------------------------
+Après avoir mis `dry_run` sur `false` dans `config.json` :
+
+python arr_folder_renamer.py
+
+📝 **Exemple de sortie :**
+🚀 Démarrage du script...
+✅ Connexion réussie à Sonarr et Radarr.
+📋 10 séries et 15 films analysés.
+📂 3 séries et 5 films nécessitent une correction du chemin.
+📝 Mise à jour du chemin pour "Breaking Bad" (ID 12345)
+📝 Mise à jour du chemin pour "Interstellar" (ID 67890)
+✅ Modifications appliquées avec succès.
+♻️ Rafraîchissement de Plex...
+✅ Plex a été actualisé.
+
+=============================================================
+💡 ASTUCE
+-------------------------------------------------------------
+Vous pouvez programmer l'exécution automatique de ce script 
+via un **cron job** ou une **tâche planifiée Windows**.
+
 """
+
 
 import json
 import logging
 from logging.handlers import RotatingFileHandler
-#from datetime import datetime
 import requests
 import time
-
 
 # Charger la configuration
 CONFIG_FILE = "config.json"
