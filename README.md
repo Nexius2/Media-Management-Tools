@@ -91,22 +91,109 @@ python QBCleaner.py
 
 ---
 
-### 5️⃣ **Arr Folder Renamer** (`arr_folder_renamer.py`)
+## 📁 arr_folder_renamer
 
-**Description** :
-Ce script ajuste les chemins des fichiers dans **Sonarr** et **Radarr** pour inclure les identifiants IMDb et TMDB, facilitant l'intégration avec **Plex**.
+### 🇫🇷 Description
 
-**Exécution** :
+`arr_folder_renamer.py` est un script Python qui renomme automatiquement les dossiers des **films (Radarr)** et **séries (Sonarr)** selon le format configuré dans chaque application, puis vérifie que les fichiers sont toujours bien détectés. Il met ensuite à jour un **cache local** pour éviter les traitements redondants.
+
+Il utilise les APIs de :
+- Radarr
+- Sonarr
+- Plex (pour forcer un scan à la fin)
+
+### 🔧 Utilisation
 
 ```bash
 python arr_folder_renamer.py
 ```
 
-**Fonctionnalités** :
+Le comportement est défini dans `config.json` (voir ci-dessous).
 
-- Modifie les chemins des fichiers en ajoutant IMDb/TMDB
-- Rafraîchit les bibliothèques dans Radarr et Sonarr
-- Rafraîchit Plex après modification
+### 📁 Structure du fichier `config.json`
+
+```json
+"arr_folder_renamer": {
+    "log_file": "logs/arr_folder_renamer.log",   // Chemin vers le fichier de logs
+    "log_level": "INFO",                         // Niveau de log : DEBUG, INFO, WARNING, etc.
+    "dry_run": false,                            // true = simulation sans modifier quoi que ce soit
+    "run_sonarr": true,                          // true = activer le traitement des séries
+    "run_radarr": true,                          // true = activer le traitement des films
+    "work_limit": 200                            // Limite de séries/films à traiter à chaque exécution
+}
+```
+
+Et dans la section `services` :
+
+```json
+"services": {
+    "radarr": {
+        "url": "http://192.168.1.60:7878",
+        "api_key": "clé_api_radarr"
+    },
+    "sonarr": {
+        "url": "http://192.168.1.60:8989",
+        "api_key": "clé_api_sonarr"
+    },
+    "plex": {
+        "url": "http://192.168.1.80:32400",
+        "api_key": "clé_api_plex"
+    }
+}
+```
+
+---
+
+### 🇬🇧 Description
+
+`arr_folder_renamer.py` is a Python script that **renames folders** for **movies (Radarr)** and **TV shows (Sonarr)** according to the configured naming format in each app. It ensures that the media files are still correctly detected after the move, and updates a **local cache** to avoid redundant processing.
+
+It uses the following APIs:
+- Radarr
+- Sonarr
+- Plex (optional rescan after completion)
+
+### 🔧 How to use
+
+```bash
+python arr_folder_renamer.py
+```
+
+All behavior is controlled via `config.json` (see below).
+
+### 📁 Example `config.json` block
+
+```json
+"arr_folder_renamer": {
+    "log_file": "logs/arr_folder_renamer.log",   // Path to the log file
+    "log_level": "INFO",                         // Logging level: DEBUG, INFO, etc.
+    "dry_run": false,                            // true = simulate without making any change
+    "run_sonarr": true,                          // true = enable TV show processing
+    "run_radarr": true,                          // true = enable movie processing
+    "work_limit": 200                            // Limit of shows/movies to process per run
+}
+```
+
+Under the `services` section:
+
+```json
+"services": {
+    "radarr": {
+        "url": "http://192.168.1.60:7878",
+        "api_key": "your_radarr_api_key"
+    },
+    "sonarr": {
+        "url": "http://192.168.1.60:8989",
+        "api_key": "your_sonarr_api_key"
+    },
+    "plex": {
+        "url": "http://192.168.1.80:32400",
+        "api_key": "your_plex_api_key"
+    }
+}
+```
+
+
 
 ---
 
