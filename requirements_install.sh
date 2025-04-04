@@ -66,4 +66,56 @@ else
     exit 1
 fi
 
+echo -e "${YELLOW}Installation du module unidecode...${NC}"
+pip install unidecode
+if [ $? -eq 0 ]; then
+    echo -e "${GREEN}Le module unidecode a été installé avec succès.${NC}"
+else
+    echo -e "${RED}Échec de l'installation du module unidecode.${NC}"
+    exit 1
+fi
+
+echo -e "${YELLOW}Installation du module fuzzywuzzy...${NC}"
+pip install fuzzywuzzy
+if [ $? -eq 0 ]; then
+    echo -e "${GREEN}Le module fuzzywuzzy a été installé avec succès.${NC}"
+else
+    echo -e "${RED}Échec de l'installation du module fuzzywuzzy.${NC}"
+    exit 1
+fi
+
+echo -e "${YELLOW}Installation du module python-Levenshtein...${NC}"
+pip install python-Levenshtein
+if [ $? -eq 0 ]; then
+    echo -e "${GREEN}Le module python-Levenshtein a été installé avec succès.${NC}"
+else
+    echo -e "${RED}Échec de l'installation du module python-Levenshtein.${NC}"
+    exit 1
+fi
+
+
+
 echo -e "${GREEN}Toutes les opérations ont été effectuées avec succès !${NC}"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
