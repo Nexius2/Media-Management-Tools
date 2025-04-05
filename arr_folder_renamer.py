@@ -29,7 +29,7 @@ from pathlib import Path
 CONFIG_FILE = "config.json"
 RADARR_CACHE_FILE = "cache_radarr_paths.json"
 SONARR_CACHE_FILE = "cache_sonarr_paths.json"
-VERSION = "2.1.56"
+VERSION = "2.1.57"
 
 
 
@@ -808,7 +808,7 @@ def force_series_rescan(api_url, api_key, series_id):
 
 
 # 📌 Traitement des séries dans Sonarr
-def process_sonarr():
+def process_sonarr(sonarr_cache):
     logging.info("🚀 Début du traitement Sonarr...")
     sonarr_cache = load_sonarr_cache()
     logging.info(f"📊 {len(sonarr_cache)} séries dans le cache.")
@@ -1063,7 +1063,7 @@ def check_radarr_move_logs():
     return False
 
 # 📌 Traitement des films dans Radarr
-def process_radarr():
+def process_radarr(radarr_cache):
     logging.debug("📡 Étape 1 : Récupération du Movie Folder Format de Radarr...")
     folder_format = get_movie_folder_format(RADARR_URL, RADARR_API_KEY, "Radarr")
 
@@ -1163,10 +1163,10 @@ def main():
     logging.info(f"📊 {len(sonarr_cache)} series dans le cache.")
 
     if RUN_RADARR:
-        process_radarr()
+        process_radarr(radarr_cache)
 
     if RUN_SONARR:
-        process_sonarr()
+        process_sonarr(sonarr_cache)
 
     # ✅ Rafraîchissement Plex après traitement
     if not DRY_RUN:
