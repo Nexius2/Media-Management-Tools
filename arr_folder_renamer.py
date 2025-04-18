@@ -19,6 +19,7 @@ import requests
 import time
 import re
 import unidecode
+from unidecode import unidecode
 from datetime import datetime, timedelta
 from fuzzywuzzy import fuzz
 from pathlib import Path
@@ -29,7 +30,7 @@ from pathlib import Path
 CONFIG_FILE = "config.json"
 RADARR_CACHE_FILE = "cache_radarr_paths.json"
 SONARR_CACHE_FILE = "cache_sonarr_paths.json"
-VERSION = "2.1.57"
+VERSION = "2.1.62"
 
 
 
@@ -59,6 +60,12 @@ DRY_RUN = config["arr_folder_renamer"]["dry_run"]
 WORK_LIMIT = config["arr_folder_renamer"]["work_limit"]
 RUN_SONARR = config["arr_folder_renamer"]["run_sonarr"]
 RUN_RADARR = config["arr_folder_renamer"]["run_radarr"]
+
+required_keys = ["sonarr", "radarr", "plex"]
+for service in required_keys:
+    if service not in config["services"]:
+        logging.error(f"❌ Clé de configuration manquante : services.{service}")
+        sys.exit(1)
 
 
 # 🔥 Correction du logging : Réinitialisation complète
@@ -148,7 +155,7 @@ def get_movie_details(api_url, api_key, movie_id):
         return None
 
 # Récupérer tous les films et extraire les tokens
-def get_all_movies(api_url, api_key, max_retries=5, wait_time=10):
+def get_all_movies(api_url, api_key, max_retries=3, wait_time=10):
     """
     Récupère la liste de tous les films dans Radarr et extrait leurs informations.
     """
@@ -310,6 +317,10 @@ def generate_series_path(root_folder, folder_format, token_values):
     logging.info(f"📺 Chemin généré pour Sonarr : {final_path}")
     return final_path
 
+def same_path(path1, path2):
+    return path1.rstrip("/") == path2.rstrip("/")
+
+
 # 📌 Mise à jour du chemin dans Radarr
 def update_movie_path(api_url, api_key, movie_id, new_path, root_folder, root_folder_path, movies_to_process):
     """
@@ -323,7 +334,7 @@ def update_movie_path(api_url, api_key, movie_id, new_path, root_folder, root_fo
 
     # Vérifie si le chemin actuel est déjà correct
     current_path = get_movie_details(api_url, api_key, movie_id).get("path", "").rstrip("/")
-    if current_path == new_path.rstrip("/"):
+    if same_path(current_path, new_path):
         logging.info(f"✅ Le film {movie_id} est déjà dans le bon dossier ({new_path}), aucune modification nécessaire.")
         return False
     else:
@@ -348,7 +359,7 @@ def update_movie_path(api_url, api_key, movie_id, new_path, root_folder, root_fo
         
     # 📌 Vérifier si le chemin est déjà correct
     current_path = movie_details.get("path", "").rstrip("/")
-    if current_path == new_path.rstrip("/"):
+    if same_path(current_path, new_path):
         logging.info(f"✅ Le film {movie_id} est déjà dans le bon dossier ({new_path}), aucune modification nécessaire.")
         return False  # 🚀 On évite un appel inutile à l'API
 
@@ -359,7 +370,7 @@ def update_movie_path(api_url, api_key, movie_id, new_path, root_folder, root_fo
     quality_profile_id = movie_details.get("qualityProfileId", 0)
     if quality_profile_id <= 0:
         logging.error(f"❌ Film {movie_id} - `qualityProfileId` est invalide : {quality_profile_id}")
-        return true
+        return True
 
     # ✅ Récupérer `rootFolderPath`
 #    root_folder_path = movie_details.get("rootFolderPath", "")
@@ -391,7 +402,6 @@ def update_movie_path(api_url, api_key, movie_id, new_path, root_folder, root_fo
     }
 
     if DRY_RUN:
-        logging.info(f"[DRY_RUN] Simulation de modification du chemin pour le film ID {movie_id} -> {new_path}")
         logging.info(f"[DRY_RUN] Simulation de modification du chemin pour le film ID {movie_id} -> {new_path}")
         logging.info(f"[DRY_RUN] Requête API qui aurait été envoyée à Radarr :")
         #logging.info(f"URL: {api_url}/api/v3/movie/{movie_id}")
@@ -440,10 +450,10 @@ def update_movie_path(api_url, api_key, movie_id, new_path, root_folder, root_fo
                     logging.info("♻️ Tous les films déplacés, lancement du rescan.")
                     force_rescan(api_url, api_key, movie_id)
                     #for movie_id in [movie_id]:  # Assure que movie_id est bien une liste itérable
-                    for movie_id in [processed_movies]:  # Assure que movie_id est bien une liste itérable
-                        logging.info("⚠️ rescan du film {movie_id}.")
+                    #for movie_id in [processed_movies]:  # Assure que movie_id est bien une liste itérable
+                    #    logging.info("⚠️ rescan du film {movie_id}.")
 
-                        force_rescan(api_url, api_key, movie_id)
+                    #    force_rescan(api_url, api_key, movie_id)
                 else:
                     logging.debug("⚠️ Certains films n'ont pas été déplacés ou plus de films a controler, rescan annulé.")
 
@@ -467,15 +477,24 @@ def update_movie_path(api_url, api_key, movie_id, new_path, root_folder, root_fo
 
 def generate_clean_title(title):
     """
-    Génère le 'Movie CleanTitle' en nettoyant le titre du film.
+    Génère un titre nettoyé compatible avec les noms de dossiers.
     """
     if not title:
         return "Unknown-Title"
 
-    clean_title = title.lower()  # Convertit en minuscules pour standardiser
-    clean_title = re.sub(r"[^a-zA-Z0-9 ]", "", clean_title)  # Supprime les caractères spéciaux
-    clean_title = re.sub(r"\s+", " ", clean_title).strip()  # Remplace les espaces multiples par un seul
-    return clean_title.title()  # Remet en majuscule la première lettre de chaque mot
+    # Translitère les caractères accentués ou non-latins
+    clean_title = unidecode(title)
+
+    # Supprime les caractères interdits sur les systèmes de fichiers
+    clean_title = re.sub(r'[\\\\/*?:"<>|]', '', clean_title)
+
+    # Remplace les & par 'and' pour plus de compatibilité
+    clean_title = clean_title.replace('&', 'and')
+
+    # Normalise les espaces
+    clean_title = re.sub(r'\s+', ' ', clean_title).strip()
+
+    return clean_title
 
 
 def force_movie_move(api_url, api_key, movie_id):
@@ -648,7 +667,7 @@ def get_queue(api_url, api_key):
 
     
 
-def wait_for_completion(arr_url, arr_api_key, max_retries=20, wait_time=60):
+def wait_for_completion(arr_url, arr_api_key, max_retries=5, wait_time=60):
     """
     Attend la fin des traitements en cours dans Sonarr ou Radarr avant de poursuivre.
     """
@@ -737,7 +756,7 @@ def update_series_path(api_url, api_key, series_id, new_path, root_folder_path):
             return False
 
         current_path = series_details.get("path", "").rstrip("/")
-        if current_path == new_path.rstrip("/"):
+        if same_path(current_path, new_path):
             logging.info(f"✅ La série {series_id} est déjà dans le bon dossier ({new_path}), aucune modification nécessaire.")
             return False
 
@@ -771,10 +790,18 @@ def update_series_path(api_url, api_key, series_id, new_path, root_folder_path):
         if e.response.status_code == 409:
             logging.error(f"❌ Erreur 409 : Conflit lors du déplacement de la série ID {series_id}")
             logging.error(f"🔎 Chemin conflictuel : {new_path}")
+
+            try:
+                error_detail = e.response.json().get("message")
+                logging.error(f"📝 Détail du conflit : {error_detail}")
+            except Exception:
+                logging.debug(f"↪️ Réponse brute Sonarr : {e.response.text}")
+
             if Path(new_path).exists():
                 logging.warning(f"⚠️ Le dossier {new_path} existe sur le disque. Vérifie s’il est lié à une autre série dans Sonarr.")
             else:
                 logging.warning("⚠️ Le dossier n’existe pas sur le disque. Il peut s’agir d’un conflit en base Sonarr.")
+
         else:
             logging.error(f"❌ Erreur HTTP Sonarr : {e}")
         return False
@@ -809,8 +836,8 @@ def force_series_rescan(api_url, api_key, series_id):
 
 # 📌 Traitement des séries dans Sonarr
 def process_sonarr(sonarr_cache):
+    #sonarr_cache = load_sonarr_cache() or {}
     logging.info("🚀 Début du traitement Sonarr...")
-    sonarr_cache = load_sonarr_cache()
     logging.info(f"📊 {len(sonarr_cache)} séries dans le cache.")
 
     folder_format = get_movie_folder_format(SONARR_URL, SONARR_API_KEY, "Sonarr")
@@ -844,7 +871,7 @@ def process_sonarr(sonarr_cache):
         new_path = generate_series_path(root_folder_path, folder_format, token_values)
         current_path = series.get("path", "").rstrip("/")
 
-        if current_path == new_path.rstrip("/"):
+        if same_path(current_path, new_path):
             logging.info(f"✅ La série {series['title']} est déjà dans le bon dossier ({current_path}), aucune modification nécessaire.")
             sonarr_cache[series_id] = new_path.rstrip("/")
             logging.debug(f"✅ Série {series_id} ajoutée au cache : {new_path}")
@@ -874,6 +901,7 @@ def process_sonarr(sonarr_cache):
 
     logging.info(f"💾 Cache Sonarr sauvegardé avec {len(sonarr_cache)} séries.")
     logging.info("✅ Fin du traitement Sonarr.")
+    return count, len(series_list)
 
 def get_root_folders_sonarr(api_url, api_key):
     try:
@@ -1031,39 +1059,10 @@ def wait_for_series_moves(series_list):
 
 
 
-def check_radarr_move_logs():
-    """
-    Vérifie les logs de Radarr pour s'assurer que les déplacements de films sont terminés.
-    """
-    url = f"{RADARR_URL}/api/v3/log?page=1&pageSize=50"
-    headers = {"X-Api-Key": RADARR_API_KEY}
-
-    max_attempts = 10
-    for attempt in range(max_attempts):
-        response = requests.get(url, headers=headers)
-
-        if response.status_code == 200:
-            logs = response.json().get("records", [])
-
-            # Recherche des logs de déplacement de film
-            move_logs = [log for log in logs if log["logger"] == "MoveMovieService"]
-
-            if not move_logs:  # Aucun déplacement détecté
-                logging.info("✅ Aucun déplacement en cours dans les logs de Radarr. On peut continuer.")
-                return True
-            else:
-                logging.info(f"⏳ {len(move_logs)} déplacements détectés dans Radarr, attente de 30s...")
-
-        else:
-            logging.error(f"❌ Erreur lors de la récupération des logs Radarr. Code: {response.status_code}")
-
-        time.sleep(30)  # Attente avant la prochaine vérification
-
-    logging.warning("⚠️ Temps d'attente écoulé, passage à l'étape suivante malgré tout.")
-    return False
 
 # 📌 Traitement des films dans Radarr
 def process_radarr(radarr_cache):
+    #radarr_cache = load_radarr_cache() or {}
     logging.debug("📡 Étape 1 : Récupération du Movie Folder Format de Radarr...")
     folder_format = get_movie_folder_format(RADARR_URL, RADARR_API_KEY, "Radarr")
 
@@ -1114,7 +1113,7 @@ def process_radarr(radarr_cache):
 
                 # ✅ Vérifier si le chemin est déjà correct
                 current_path = movie.get("path", "").rstrip("/")
-                if current_path == new_path.rstrip("/"):
+                if same_path(current_path, new_path):
                     logging.debug(f"✅ Le film {movie['title']} est déjà dans le bon dossier, aucun changement nécessaire.")
                     radarr_cache[movie_id] = new_path.rstrip("/")  # ➕ On ajoute au cache
                     continue  # Passe au film suivant
@@ -1140,17 +1139,18 @@ def process_radarr(radarr_cache):
 
     save_radarr_cache(radarr_cache)
     logging.info(f"💾 Cache sauvegardé avec {len(radarr_cache)} films.")
+    return count, len(movies)
 
 
 # 📌 Rafraîchissement de Plex
-def plex_refresh(plex_url, plex_api_key, main_logger):
+def plex_refresh(plex_url, plex_api_key):
     """ Rafraîchit les bibliothèques Plex """
     headers = {"X-Plex-Token": plex_api_key}
     response = requests.get(f"{plex_url}/library/sections/all/refresh", headers=headers)
     if response.status_code == 200:
-        main_logger.info("✅ Actualisation de la bibliothèque Plex réussie.")
+        logging.info("✅ Actualisation de la bibliothèque Plex réussie.")
     else:
-        main_logger.error("❌ Échec de l'actualisation de la bibliothèque Plex.")
+        logging.error("❌ Échec de l'actualisation de la bibliothèque Plex.")
 
 # 📌 Exécution principale
 def main():
@@ -1158,34 +1158,52 @@ def main():
     logging.info(f"🛠️  Version de l'outil : {VERSION}")
     
     radarr_cache = load_radarr_cache()
-    logging.info(f"📊 {len(radarr_cache)} films dans le cache.")
+    if not radarr_cache:
+        logging.warning("⚠️ Aucune donnée chargée depuis le cache Radarr.")
+    else:
+        logging.info(f"📊 {len(radarr_cache)} films dans le cache.")
     sonarr_cache = load_sonarr_cache()
-    logging.info(f"📊 {len(sonarr_cache)} series dans le cache.")
+    if not sonarr_cache:
+        logging.warning("⚠️ Aucune donnée chargée depuis le cache Sonarr.")
+    else:
+        logging.info(f"📊 {len(sonarr_cache)} séries dans le cache.")
+
+    radarr_done = True
+    sonarr_done = True
+    radarr_count = radarr_total = 0
+    sonarr_count = sonarr_total = 0
 
     if RUN_RADARR:
-        process_radarr(radarr_cache)
+        radarr_count, radarr_total = process_radarr(radarr_cache)
 
     if RUN_SONARR:
-        process_sonarr(sonarr_cache)
+        sonarr_count, sonarr_total = process_sonarr(sonarr_cache)
 
-    # ✅ Rafraîchissement Plex après traitement
     if not DRY_RUN:
-        #movie_titles = [movie["title"] for movie in processed_movies]
-        #if RUN_RADARR and wait_for_movie_moves(RADARR_URL, RADARR_API_KEY, processed_movies):
-        if RUN_RADARR:# and wait_for_movie_moves(RADARR_URL, RADARR_API_KEY, movie_titles):
-            logging.debug("♻️ Radarr refresh done...")
-        if RUN_SONARR:# and wait_for_completion(SONARR_URL, SONARR_API_KEY, max_retries=10, wait_time=30):
-            logging.info("♻️ Sonarr refresh done...")
-        logging.info("♻️ Rafraîchissement de Plex...")
-        plex_refresh(PLEX_URL, PLEX_API_KEY, logging)
-        logging.info("✅ Plex a été actualisé avec succès.")
-    else:
-        logging.error("❌ Impossible de rafraîchir Plex car Sonarr/Radarr n'ont pas terminé à temps.")
+        if RUN_RADARR:
+            radarr_done = wait_for_completion(RADARR_URL, RADARR_API_KEY, max_retries=10, wait_time=60)
+
+        if RUN_SONARR:
+            sonarr_done = wait_for_completion(SONARR_URL, SONARR_API_KEY, max_retries=10, wait_time=60)
+
+        if radarr_done and sonarr_done:
+            logging.info("♻️ Rafraîchissement de Plex...")
+            plex_refresh(PLEX_URL, PLEX_API_KEY)
+            logging.info("✅ Plex a été actualisé avec succès.")
+        else:
+            logging.error("❌ Impossible de rafraîchir Plex car Sonarr/Radarr n'ont pas terminé à temps.")
+
+    # ✅ Affichage résumé
+    status_suffix = "simulé" if DRY_RUN else "modifié"
+    if RUN_RADARR:
+        logging.info(f"📋 Radarr : {radarr_count} films {status_suffix}s / {radarr_total} analysés.")
+
+    if RUN_SONARR:
+        logging.info(f"📋 Sonarr : {sonarr_count} séries {status_suffix}es / {sonarr_total} analysées.")
 
     logging.info("✅ Fin du script.")
 
+
 if __name__ == "__main__":
     main()
-
-
 
